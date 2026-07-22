@@ -10,6 +10,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@kibotalk/conversation": "workspace:*",
+    "@kibotalk/pipeline": "workspace:*",
+    "@kibotalk/speaker": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

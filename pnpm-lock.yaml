@@ -42,6 +42,15 @@ importers:
 
   apps/playground:
     dependencies:
+      '@kibotalk/conversation':
+        specifier: workspace:*
+        version: link:../../packages/conversation
+      '@kibotalk/pipeline':
+        specifier: workspace:*
+        version: link:../../packages/pipeline
+      '@kibotalk/speaker':
+        specifier: workspace:*
+        version: link:../../packages/speaker
       react:
         specifier: ^19.0.0
         version: 19.2.8
@@ -98,13 +107,28 @@ importers:
 
   packages/pages: {}
 
-  packages/pipeline: {}
+  packages/pipeline:
+    dependencies:
+      '@kibotalk/conversation':
+        specifier: workspace:*
+        version: link:../conversation
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/prompts: {}
 
   packages/shared: {}
 
-  packages/speaker: {}
+  packages/speaker:
+    dependencies:
+      '@kibotalk/conversation':
+        specifier: workspace:*
+        version: link:../conversation
 
   packages/stt: {}
 
