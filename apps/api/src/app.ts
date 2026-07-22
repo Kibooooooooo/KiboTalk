@@ -8,14 +8,17 @@ import type { ConversationTurn } from '@kibotalk/conversation'
 
 export const app = new Hono()
 
-// POST /stt — receive a WAV (16kHz mono), forward to the active STT provider,
-// return { text }. The provider/key come from env (STT_ACTIVE + STT_<PROVIDER>_*);
-// the key never leaves this process. Client abort aborts the upstream request.
+// POST /stt — receive a WAV (16kHz mono), forward to an STT provider, return
+// { text }. Provider is STT_ACTIVE by default; an optional ?provider= query
+// overrides per-request (must be a registered provider; its base URL / key /
+// model still come from server env, so keys never leave this process). Client
+// abort aborts the upstream request.
 app.post('/stt', async (c) => {
   const wav = await c.req.arrayBuffer()
+  const providerOverride = c.req.query('provider') || undefined
   let sttClient
   try {
-    sttClient = createSttClient(sttConfigFromEnv(process.env))
+    sttClient = createSttClient(sttConfigFromEnv(process.env, providerOverride))
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500)
   }

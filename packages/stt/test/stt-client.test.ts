@@ -220,4 +220,31 @@ describe("sttConfigFromEnv", () => {
   it("throws when STT_ACTIVE is unset", () => {
     expect(() => sttConfigFromEnv({})).toThrow(/STT_ACTIVE is not set/i);
   });
+
+  it("honors a per-request provider override (keys still come from server env)", () => {
+    const config = sttConfigFromEnv(
+      {
+        STT_ACTIVE: "openrouter",
+        STT_OPENROUTER_BASE_URL: "https://cloud.example",
+        STT_OPENROUTER_API_KEY: "cloud-key",
+        STT_OPENROUTER_MODEL: "openai/gpt-4o-transcribe",
+        STT_OPENAI_BASE_URL: "http://localhost:8765/v1",
+        STT_OPENAI_API_KEY: "local-key",
+        STT_OPENAI_MODEL: "Qwen/Qwen3-ASR-1.7B",
+      },
+      "openai",
+    );
+    expect(config).toEqual({
+      provider: "openai",
+      baseUrl: "http://localhost:8765/v1",
+      apiKey: "local-key",
+      model: "Qwen/Qwen3-ASR-1.7B",
+    });
+  });
+
+  it("throws on unknown provider override", () => {
+    expect(() =>
+      sttConfigFromEnv({ STT_ACTIVE: "openrouter" }, "nope"),
+    ).toThrow(/unknown stt provider/i);
+  });
 });

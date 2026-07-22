@@ -139,16 +139,19 @@ registerAdapter("openai", createOpenAiCompatAdapter, {
 });
 
 /**
- * Pure helper that reads `STT_ACTIVE` plus the active provider's env group
+ * Pure helper that reads the active provider's env group
  * (`STT_<PROVIDER>_BASE_URL`, `STT_<PROVIDER>_API_KEY`, `STT_<PROVIDER>_MODEL`)
- * and returns factory args. Falls back to the provider's registered default
- * model when `STT_<PROVIDER>_MODEL` is absent. Throws clear errors on missing
- * active provider or missing required env values.
+ * and returns factory args. The active provider is `providerOverride` if given
+ * (a per-request override, e.g. from a query param), otherwise `STT_ACTIVE`.
+ * Falls back to the provider's registered default model when
+ * `STT_<PROVIDER>_MODEL` is absent. Throws clear errors on missing active
+ * provider or missing required env values. Keys never leave the server.
  */
 export function sttConfigFromEnv(
   env: Record<string, string | undefined>,
+  providerOverride?: string,
 ): SttClientConfig {
-  const provider = env.STT_ACTIVE;
+  const provider = providerOverride ?? env.STT_ACTIVE;
   if (!provider) {
     throw new Error("STT_ACTIVE is not set");
   }

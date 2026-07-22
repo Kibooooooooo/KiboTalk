@@ -41,9 +41,6 @@ export default function DirectApi() {
 
 function SttPanel() {
   const [provider, setProvider] = useState<'cloud' | 'local'>('cloud')
-  const [localBaseUrl, setLocalBaseUrl] = useState('http://localhost:8765/v1')
-  const [localApiKey, setLocalApiKey] = useState('')
-  const [localModel, setLocalModel] = useState('Qwen/Qwen3-ASR-1.7B')
   const [transcription, setTranscription] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -57,27 +54,15 @@ function SttPanel() {
     setError('')
     setTranscription('')
     try {
-      if (provider === 'cloud') {
-        const res = await fetch('/stt', { method: 'POST', body: wav })
-        const json = (await res.json()) as { text?: string; error?: string }
-        if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
-        setTranscription(json.text ?? '')
-      } else {
-        // Browser-direct to a local OpenAI-compatible server (mlx-qwen3-asr).
-        // No key leaves the machine; consistent with ADR-0001 client orchestration.
-        const form = new FormData()
-        form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audio.wav')
-        form.append('model', localModel)
-        form.append('language', 'ja')
-        const res = await fetch(`${localBaseUrl}/audio/transcriptions`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${localApiKey}` },
-          body: form,
-        })
-        const json = (await res.json()) as { text?: string; error?: string }
-        if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
-        setTranscription(json.text ?? '')
-      }
+      // Always via the /stt proxy (keys stay server-side). ?provider= overrides
+      // the active provider per request; the server resolves base URL / key /
+      // model from its own env. 'local' = the openai-compatible provider, which
+      // defaults to a local mlx-qwen3-asr server (see ADR 0002).
+      const url = provider === 'local' ? '/stt?provider=openai' : '/stt'
+      const res = await fetch(url, { method: 'POST', body: wav })
+      const json = (await res.json()) as { text?: string; error?: string }
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+      setTranscription(json.text ?? '')
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -157,24 +142,11 @@ function SttPanel() {
         </div>
 
         {provider === 'local' && (
-          <div className="grid gap-2 sm:grid-cols-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="stt-base">Base URL</Label>
-              <Input id="stt-base" value={localBaseUrl} onChange={(e) => setLocalBaseUrl(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="stt-key">API Key</Label>
-              <Input id="stt-key" value={localApiKey} onChange={(e) => setLocalApiKey(e.target.value)} placeholder="serve 启动时的 key" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="stt-model">模型</Label>
-              <Input id="stt-model" value={localModel} onChange={(e) => setLocalModel(e.target.value)} />
-            </div>
-            <p className="text-xs text-muted-foreground sm:col-span-3">
-              本地需先启动：<code>pip install "mlx-qwen3-asr[serve]"</code> 然后{' '}
-              <code>mlx-qwen3-asr serve --api-key &lt;key&gt;</code>（默认 :8765）。仅 Apple Silicon。
-            </p>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            本地模式：服务端需在 <code>.env</code> 配置 <code>STT_OPENAI_*</code>（指向本机
+            <code>mlx-qwen3-asr serve</code>，默认 :8765）并运行 <code>pnpm dev:api</code>。
+            key / base URL / 模型都在服务端，浏览器只选 provider。仅 Apple Silicon。见 ADR 0002。
+          </p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">

@@ -540,16 +540,17 @@ STT_OPENROUTER_MODEL=openai/gpt-4o-transcribe   # fallback: groq/whisper-large-v
 
 **STT provider 选型结论**：本地 VAD 切段后 batch 发送（非连续 streaming），故 Deepgram 的 streaming 优势用不上；按"日语准确率 + 成本"选，默认 `openai/gpt-4o-transcribe`，`groq/whisper-large-v3-turbo` 作 cost-fallback。LLM 具体用哪个模型留到 playground 跑出候选质量再定，env 方案 B 让切换零成本。
 
-**本地 STT（可选，低延迟）**：除云端代理外，`packages/stt` 另注册 `openai` provider——标准 OpenAI 兼容 multipart `/v1/audio/transcriptions`，默认指向本机 [`mlx-qwen3-asr`](https://github.com/moona3k/mlx-qwen3-asr)（`serve` 模式，Apple Silicon / MLX，Qwen3-ASR-1.7B，日语 FLEURS 3.6% 错误率）。该服务是本机独立进程，**不纳入本仓库**；浏览器在 playground 选 `local` 时**直连** `http://localhost:8765/v1`，绕过 `apps/api`（本地无 key 顾虑，与 ADR-0001 一致）。云端仍是默认。详见 [ADR 0002](./adr/0002-local-stt-mlx-qwen3-asr.md)。
+**本地 STT（可选，低延迟）**：除云端 provider 外，`packages/stt` 另注册 `openai` provider——标准 OpenAI 兼容 multipart `/v1/audio/transcriptions`，默认指向本机 [`mlx-qwen3-asr`](https://github.com/moona3k/mlx-qwen3-asr)（`serve` 模式，Apple Silicon / MLX，Qwen3-ASR-1.7B，日语 FLEURS 3.6% 错误率）。该服务是本机独立进程，**不纳入本仓库**。**仍经 `apps/api` 的 `/stt` 代理转发**（不浏览器直连）：浏览器只发 `/stt?provider=openai`，base URL / key / model 全留在服务端 env，单一入口、key 不出服务端。`apps/api` 与 `mlx-qwen3-asr` 须同机（本地 dev 场景）；部署到 Railway 时用云端 provider。云端仍是默认。详见 [ADR 0002](./adr/0002-local-stt-mlx-qwen3-asr.md)。
 
 ```bash
-# 本地 Qwen3-ASR（仅 Apple Silicon）
+# 本地 Qwen3-ASR（仅 Apple Silicon，与 apps/api 同机）
 pip install "mlx-qwen3-asr[serve]"
 mlx-qwen3-asr serve --api-key $(openssl rand -hex 16)   # localhost:8765
-STT_ACTIVE=openai
+# 服务端 .env：
 STT_OPENAI_BASE_URL=http://localhost:8765/v1
 STT_OPENAI_API_KEY=本地 serve 启动时生成的 key
 STT_OPENAI_MODEL=Qwen/Qwen3-ASR-1.7B   # 想更快切 Qwen/Qwen3-ASR-0.6B
+# 浏览器：POST /stt?provider=openai
 ```
 
 ---
