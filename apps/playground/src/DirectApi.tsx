@@ -45,7 +45,6 @@ function SttPanel() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [recording, setRecording] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
   const audioRef = useRef<AudioSource | null>(null)
   const chunksRef = useRef<Float32Array[]>([])
 
@@ -68,19 +67,6 @@ function SttPanel() {
     } finally {
       setBusy(false)
     }
-  }
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    sendWav(await file.arrayBuffer())
-  }
-
-  function sendSample() {
-    const sampleRate = 16000
-    const pcm = new Float32Array(sampleRate)
-    for (let i = 0; i < sampleRate; i++) pcm[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.3
-    sendWav(encodeWav(pcm, sampleRate))
   }
 
   async function startRecording() {
@@ -136,7 +122,7 @@ function SttPanel() {
               className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
             >
               <option value="cloud">云端代理（/stt，藏 key）</option>
-              <option value="local">本地 Qwen3-ASR（浏览器直连）</option>
+              <option value="local">本地 Qwen3-ASR（经代理）</option>
             </select>
           </div>
         </div>
@@ -149,10 +135,6 @@ function SttPanel() {
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <input ref={fileRef} type="file" accept=".wav,audio/wav" onChange={onFile} className="text-sm" />
-          <Button variant="outline" onClick={sendSample} disabled={busy || recording}>发送示例 WAV</Button>
-        </div>
         <div className="flex flex-wrap items-center gap-2">
           {!recording ? (
             <Button onClick={startRecording} disabled={busy}>开始录音</Button>
