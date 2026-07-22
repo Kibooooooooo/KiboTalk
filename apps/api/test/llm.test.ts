@@ -73,22 +73,25 @@ async function readSse(res: Response): Promise<Array<{ event: string; data: stri
   return messages
 }
 
+/** xsai calls fetch with a URL object; normalize to a string. */
+function toUrl(input: unknown): string {
+  if (input instanceof URL) return input.toString()
+  return typeof input === 'string' ? input : (input as Request).url
+}
+
 /** Mock only upstream provider calls; delegate localhost (the proxy) to real fetch. */
 function mockUpstream(response: Response) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    const url = typeof input === 'string' ? input : (input as Request).url
+    const url = toUrl(input)
     if (url.startsWith(baseUrl)) return realFetch(input as RequestInfo, init as RequestInit)
     return response
   })
 }
 
 function upstreamCall(calls: Array<[unknown, RequestInit | undefined]>): [string, RequestInit] {
-  const upstream = calls.find(([url]) => {
-    const u = typeof url === 'string' ? url : (url as Request).url
-    return u.includes('/chat/completions')
-  })
+  const upstream = calls.find(([url]) => toUrl(url).includes('/chat/completions'))
   if (!upstream) throw new Error('upstream /chat/completions call not captured')
-  return [upstream[0] as string, upstream[1] as RequestInit]
+  return [toUrl(upstream[0]), upstream[1] as RequestInit]
 }
 
 describe('T3 — real /llm SSE through proxy', () => {
@@ -161,7 +164,7 @@ describe('T3 — real /llm SSE through proxy', () => {
       releaseUpstream = resolve
     })
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      const url = typeof input === 'string' ? input : (input as Request).url
+      const url = toUrl(input)
       if (url.startsWith(baseUrl)) return realFetch(input as RequestInfo, init as RequestInit)
       capturedSignal = init?.signal ?? undefined
       const upstreamStream = new ReadableStream<Uint8Array>({

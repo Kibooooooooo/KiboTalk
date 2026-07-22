@@ -24,6 +24,12 @@ type FetchCall = {
   init: RequestInit
 }
 
+/** xsai calls fetch with a URL object; normalize to a string for assertions. */
+function toUrl(input: unknown): string {
+  if (input instanceof URL) return input.toString()
+  return String(input)
+}
+
 describe('createLlmClient — OpenRouter streaming adapter', () => {
   let fetchCalls: FetchCall[]
   let originalFetch: typeof fetch
@@ -31,8 +37,8 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
   beforeEach(() => {
     fetchCalls = []
     originalFetch = globalThis.fetch
-    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
-      fetchCalls.push({ url, init: init ?? {} })
+    globalThis.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
+      fetchCalls.push({ url: toUrl(input), init: init ?? {} })
       return sseResponse([
         'data: {"choices":[{"delta":{"content":"Hello"}}]}',
         'data: {"choices":[{"delta":{"content":""}}]}',
