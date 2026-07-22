@@ -108,6 +108,75 @@ describe("createSttClient (openrouter adapter)", () => {
   });
 });
 
+describe("createSttClient (openai-compatible adapter)", () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("POSTs multipart/form-data with file+model to /audio/transcriptions and returns text", async () => {
+    const mockFetch = vi.fn(async () => mockResponse("こんにちは"));
+    globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
+
+    const client = createSttClient({
+      provider: "openai",
+      baseUrl: "http://localhost:8765/v1",
+      apiKey: "local-key",
+      model: "Qwen/Qwen3-ASR-1.7B",
+    });
+
+    const text = await client.transcribe(new ArrayBuffer(8), {
+      language: "ja",
+    });
+    expect(text).toBe("こんにちは");
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0] as [
+      string,
+      RequestInit & { headers: Record<string, string> },
+    ];
+    expect(url).toBe("http://localhost:8765/v1/audio/transcriptions");
+    expect(init.method).toBe("POST");
+    expect(init.headers["Authorization"]).toBe("Bearer local-key");
+    // multipart body, not JSON
+    expect(init.body).toBeInstanceOf(FormData);
+    const form = init.body as FormData;
+    expect(form.get("model")).toBe("Qwen/Qwen3-ASR-1.7B");
+    expect(form.get("language")).toBe("ja");
+    const file = form.get("file") as File;
+    expect(file.type).toBe("audio/wav");
+    expect(file.name).toBe("audio.wav");
+  });
+
+  it("omits language when not provided", async () => {
+    const mockFetch = vi.fn(async () => mockResponse("ok"));
+    globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
+    const client = createSttClient({
+      provider: "openai",
+      baseUrl: "http://localhost:8765/v1",
+      apiKey: "k",
+      model: "m",
+    });
+    await client.transcribe(new ArrayBuffer(2));
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect((init.body as FormData).get("language")).toBeNull();
+  });
+
+  it("throws on non-ok response", async () => {
+    globalThis.fetch = vi.fn(async () => mockResponse("", false)) as unknown as typeof globalThis.fetch;
+    const client = createSttClient({
+      provider: "openai",
+      baseUrl: "http://localhost:8765/v1",
+      apiKey: "k",
+      model: "m",
+    });
+    await expect(client.transcribe(new ArrayBuffer(2))).rejects.toThrow(/STT request failed/);
+  });
+});
+
 describe("sttConfigFromEnv", () => {
   it("returns factory args for the active provider group", () => {
     const config = sttConfigFromEnv({

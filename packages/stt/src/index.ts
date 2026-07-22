@@ -14,6 +14,9 @@ export interface SttClientConfig {
 
 export interface TranscribeOptions {
   signal?: AbortSignal;
+  /** Optional language hint (e.g. "ja", "en"). Honored by OpenAI-compatible
+   * servers (mlx-qwen3-asr, vLLM, Groq); ignored by the OpenRouter adapter. */
+  language?: string;
 }
 
 export interface SttClient {
@@ -98,6 +101,41 @@ function createOpenRouterAdapter(config: SttClientConfig): SttAdapter {
 
 registerAdapter("openrouter", createOpenRouterAdapter, {
   model: "openai/gpt-4o-transcribe",
+});
+
+/**
+ * Standard OpenAI-compatible multipart adapter. POSTs the WAV as
+ * `multipart/form-data` (`file` + `model` + optional `language`) to
+ * `${baseUrl}/audio/transcriptions` and returns `response.text`. Works with
+ * any OpenAI Whisper-compatible server: mlx-qwen3-asr (`serve`), vLLM, Groq,
+ * real OpenAI. This is the path used for local low-latency STT.
+ */
+function createOpenAiCompatAdapter(config: SttClientConfig): SttAdapter {
+  return {
+    async transcribe(audio, opts) {
+      const form = new FormData();
+      form.append("file", new Blob([audio], { type: "audio/wav" }), "audio.wav");
+      form.append("model", config.model);
+      if (opts.language) form.append("language", opts.language);
+      const response = await fetch(`${config.baseUrl}/audio/transcriptions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+        body: form,
+        signal: opts.signal,
+      });
+      if (!response.ok) {
+        throw new Error(
+          `STT request failed: ${response.status} ${response.statusText}`,
+        );
+      }
+      const json = (await response.json()) as { text?: string };
+      return json.text ?? "";
+    },
+  };
+}
+
+registerAdapter("openai", createOpenAiCompatAdapter, {
+  model: "Qwen/Qwen3-ASR-1.7B",
 });
 
 /**
