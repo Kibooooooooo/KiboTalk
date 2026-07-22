@@ -4,11 +4,12 @@ import PipelineSimulator from './PipelineSimulator'
 import DirectApi from './DirectApi'
 import LiveSession from './LiveSession'
 import Enrollment from './Enrollment'
+import VadPanel from './VadPanel'
 
-type Tab = 'pipeline' | 'direct' | 'live' | 'enroll'
+type Tab = 'vad' | 'pipeline' | 'direct' | 'live' | 'enroll'
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('pipeline')
+  const [tab, setTab] = useState<Tab>('vad')
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -22,11 +23,15 @@ export default function App() {
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
           <TabsList>
+            <TabsTrigger value="vad">VAD 检测</TabsTrigger>
             <TabsTrigger value="pipeline">管线模拟器</TabsTrigger>
             <TabsTrigger value="direct">直连 API</TabsTrigger>
             <TabsTrigger value="live">实时会话</TabsTrigger>
             <TabsTrigger value="enroll">声纹录入</TabsTrigger>
           </TabsList>
+          <TabsContent value="vad">
+            <VadPanel />
+          </TabsContent>
           <TabsContent value="pipeline">
             <PipelineSimulator />
           </TabsContent>

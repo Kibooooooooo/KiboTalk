@@ -3,7 +3,7 @@ import { EmbeddingSpeakerVerifier, IndexedDbEmbeddingStorage } from '@kibotalk/s
 import { createVAD } from '@kibotalk/audio/vad'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kibotalk/ui'
 import { AudioSource } from './audio/audio-source'
-import { createSileroInfer } from './audio/silero-vad'
+import { createSileroInfer, SILERO_VARIANTS } from './audio/silero-vad'
 import { createWorkerEmbedAudio } from './audio/speaker-embed'
 
 const PASSPHRASE = '你好，今天也请多多关照。'
@@ -40,7 +40,7 @@ export default function Enrollment() {
     try {
       const audio = new AudioSource()
       audioRef.current = audio
-      const infer = await createSileroInfer(audio.sampleRate)
+      const infer = await createSileroInfer(SILERO_VARIANTS[0], audio.sampleRate)
       const vad = createVAD(infer, { sampleRate: audio.sampleRate })
 
       const captured = await new Promise<Float32Array>((resolve, reject) => {

@@ -9,6 +9,8 @@
  *
  * Emits `speech-start`, `speech-end`, and `speech-ready` (with the segmented PCM
  * buffer + duration). Segments shorter than `minSpeechDurationMs` are dropped.
+ * Also emits `prob` (the raw speech probability 0–1) after every inference, for
+ * live visualization/tuning (mirrors AIRI's `debug` event).
  */
 export type VadConfig = {
   sampleRate: number
@@ -43,6 +45,7 @@ export type VadEvents = {
   'speech-end': void
   'speech-ready': VadSpeechReady
   'status': { type: string; message: string }
+  'prob': number
 }
 
 type EventName = keyof VadEvents
@@ -106,6 +109,7 @@ export function createVAD(infer: VadInfer, userConfig: Partial<VadConfig> = {}):
     while (prevBuffers.length > maxPrevBuffers()) prevBuffers.shift()
 
     const prob = await infer(chunk)
+    emit('prob', prob)
 
     if (!inSpeech) {
       if (prob > config.speechThreshold) {

@@ -19,7 +19,7 @@ import {
   Label,
 } from '@kibotalk/ui'
 import { AudioSource } from './audio/audio-source'
-import { createSileroInfer } from './audio/silero-vad'
+import { createSileroInfer, SILERO_VARIANTS } from './audio/silero-vad'
 import { createWorkerEmbedAudio } from './audio/speaker-embed'
 import { ProxySttClient, ProxyLlmClient } from './proxy-clients'
 
@@ -102,7 +102,7 @@ export default function LiveSession() {
       setLoading('正在请求麦克风 + 加载 VAD 模型…')
       const audio = new AudioSource()
       audioRef.current = audio
-      const infer = await createSileroInfer(audio.sampleRate)
+      const infer = await createSileroInfer(SILERO_VARIANTS[0], audio.sampleRate)
       const vad = createVAD(infer, { ...vadParams, sampleRate: audio.sampleRate })
       vadRef.current = vad
       const stt = new ProxySttClient(audio.sampleRate)
