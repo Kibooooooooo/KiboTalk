@@ -1,0 +1,23 @@
+{
+  "name": "kibotalk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo build",
+    "dev:api": "pnpm -F @kibotalk/api dev",
+    "dev:web": "pnpm -F @kibotalk/web dev",
+    "dev:playground": "pnpm -F @kibotalk/playground dev",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
