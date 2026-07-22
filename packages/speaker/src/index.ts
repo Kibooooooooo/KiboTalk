@@ -1,2 +1,8 @@
 export type { Embedding, SpeakerVerifier, VerifyResult } from './types'
 export { StubSpeakerVerifier } from './stub-verifier'
+export { EmbeddingSpeakerVerifier } from './embedding-verifier'
+export type { EmbedAudio, EmbeddingVerifierOptions } from './embedding-verifier'
+export { cosineSimilarity } from './cosine-sim'
+export type { EmbeddingStorage } from './storage'
+export { InMemoryEmbeddingStorage } from './storage'
+export { IndexedDbEmbeddingStorage } from './idb-storage'

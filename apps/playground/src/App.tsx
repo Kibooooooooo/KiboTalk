@@ -5,11 +5,12 @@ import { createSession } from './session'
 import type { SessionHandle } from './session'
 import DirectApi from './DirectApi'
 import LiveSession from './LiveSession'
+import Enrollment from './Enrollment'
 
 type TurnView = ConversationTurn & { candidates?: ReplyCandidate[]; failed?: boolean }
 
 export default function App() {
-  const [tab, setTab] = useState<'pipeline' | 'direct' | 'live'>('pipeline')
+  const [tab, setTab] = useState<'pipeline' | 'direct' | 'live' | 'enroll'>('pipeline')
   const scriptedRef = useRef('こんにちは')
   const sessionRef = useRef<SessionHandle | null>(null)
   if (!sessionRef.current) sessionRef.current = createSession(() => scriptedRef.current)
@@ -88,11 +89,14 @@ export default function App() {
         <button onClick={() => setTab('pipeline')} style={tabBtn(tab === 'pipeline')}>Pipeline simulator</button>
         <button onClick={() => setTab('direct')} style={tabBtn(tab === 'direct')}>Direct API (STT/LLM)</button>
         <button onClick={() => setTab('live')} style={tabBtn(tab === 'live')}>Live session</button>
+        <button onClick={() => setTab('enroll')} style={tabBtn(tab === 'enroll')}>Enrollment</button>
       </nav>
       {tab === 'direct' ? (
         <DirectApi />
       ) : tab === 'live' ? (
         <LiveSession />
+      ) : tab === 'enroll' ? (
+        <Enrollment />
       ) : (
         <>
       <h1>Playground — Pipeline session simulator</h1>

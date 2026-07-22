@@ -8,9 +8,13 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "build": "tsc -p tsconfig.json --emitDeclarationOnly",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@kibotalk/conversation": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
   }
 }

@@ -172,6 +172,10 @@ importers:
       '@kibotalk/conversation':
         specifier: workspace:*
         version: link:../conversation
+    devDependencies:
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/stt:
     devDependencies:

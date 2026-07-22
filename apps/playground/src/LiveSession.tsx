@@ -3,9 +3,12 @@ import type { PipelineEvent } from '@kibotalk/pipeline'
 import { Pipeline } from '@kibotalk/pipeline'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { InMemoryConversationStorage } from '@kibotalk/conversation'
+import { EmbeddingSpeakerVerifier, IndexedDbEmbeddingStorage } from '@kibotalk/speaker'
+import type { Embedding } from '@kibotalk/speaker'
 import { createVAD } from '@kibotalk/audio/vad'
 import { AudioSource } from './audio/audio-source'
 import { createSileroInfer } from './audio/silero-vad'
+import { createWorkerEmbedAudio } from './audio/speaker-embed'
 import { ProxySttClient, ProxyLlmClient } from './proxy-clients'
 
 type TurnView = ConversationTurn & { candidates?: ReplyCandidate[] }
@@ -21,6 +24,8 @@ export default function LiveSession() {
   const [turns, setTurns] = useState<TurnView[]>([])
   const [latestCandidates, setLatestCandidates] = useState<ReplyCandidate[] | null>(null)
   const [vadStatus, setVadStatus] = useState('idle')
+  const [mode, setMode] = useState<'auto' | 'manual' | 'checking'>('checking')
+  const [confidence, setConfidence] = useState<number | null>(null)
 
   const speakerRef = useRef(speaker)
   speakerRef.current = speaker
@@ -28,13 +33,30 @@ export default function LiveSession() {
   const audioRef = useRef<AudioSource | null>(null)
   const pipelineRef = useRef<Pipeline | null>(null)
   const storageRef = useRef(new InMemoryConversationStorage())
+  const verifierRef = useRef<EmbeddingSpeakerVerifier | null>(null)
+  const embeddingRef = useRef<Embedding | null>(null)
+  const autoRef = useRef(false)
 
   async function start() {
     setError('')
-    setLoading('requesting mic + loading VAD model…')
+    setLoading('checking enrollment…')
     setTurns([])
     setLatestCandidates(null)
     try {
+      // Speaker detection: auto if an embedding is enrolled on this device, else manual.
+      if (!verifierRef.current) {
+        verifierRef.current = new EmbeddingSpeakerVerifier({
+          embedAudio: createWorkerEmbedAudio(),
+          storage: new IndexedDbEmbeddingStorage(),
+          threshold: 0.8,
+        })
+      }
+      const embedding = await verifierRef.current.loadEmbedding()
+      embeddingRef.current = embedding
+      autoRef.current = !!embedding
+      setMode(embedding ? 'auto' : 'manual')
+
+      setLoading('requesting mic + loading VAD model…')
       const audio = new AudioSource()
       audioRef.current = audio
       const infer = await createSileroInfer(audio.sampleRate)
@@ -76,12 +98,27 @@ export default function LiveSession() {
       vad.on('speech-end', () => setVadStatus('silence'))
       vad.on('speech-ready', (e) => {
         const now = Date.now()
-        void pipeline.ingestSegment({
-          pcm: e.buffer,
-          speaker: speakerRef.current,
-          startedAt: now - e.duration * 1000,
-          endedAt: now,
-        })
+        const startedAt = now - e.duration * 1000
+        const endedAt = now
+        const ingest = (speaker: 'user' | 'other') =>
+          void pipeline.ingestSegment({ pcm: e.buffer, speaker, startedAt, endedAt })
+
+        if (autoRef.current && embeddingRef.current) {
+          // Auto: verify the segment against the enrolled user embedding.
+          void verifierRef.current!
+            .verify(e.buffer.buffer as ArrayBuffer, embeddingRef.current)
+            .then((r) => {
+              setConfidence(r.confidence)
+              ingest(r.speaker)
+            })
+            .catch((err) => {
+              setError(`speaker verify failed: ${String(err)}`)
+              ingest('other')
+            })
+        } else {
+          // Manual: use the toggle label.
+          ingest(speakerRef.current)
+        }
       })
 
       await audio.start((chunk) => void vad.processAudio(chunk))
@@ -101,6 +138,7 @@ export default function LiveSession() {
     llmRef.current = null
     setRunning(false)
     setVadStatus('idle')
+    setConfidence(null)
   }
 
   function onLevelChange(value: string) {
@@ -142,7 +180,11 @@ export default function LiveSession() {
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
           currently speaking:
-          <select value={speaker} onChange={(e) => setSpeaker(e.target.value as 'user' | 'other')}>
+          <select
+            value={speaker}
+            onChange={(e) => setSpeaker(e.target.value as 'user' | 'other')}
+            disabled={mode === 'auto'}
+          >
             <option value="other">Other (相手)</option>
             <option value="user">Me (learner)</option>
           </select>
@@ -162,6 +204,20 @@ export default function LiveSession() {
         <strong>State:</strong> <span style={badge(state)}>{state}</span>
         {' · '}
         <strong>VAD:</strong> <span>{vadStatus}</span>
+        {' · '}
+        <strong>Speaker:</strong>{' '}
+        {mode === 'auto' ? (
+          <span>auto{confidence !== null ? ` (conf ${confidence.toFixed(2)})` : ''}</span>
+        ) : mode === 'manual' ? (
+          <span>manual</span>
+        ) : (
+          <span>checking…</span>
+        )}
+        {mode === 'manual' && (
+          <span style={{ color: '#94a3b8', marginLeft: '0.5rem' }}>
+            (enroll on the Enrollment tab to enable auto-detection)
+          </span>
+        )}
       </section>
 
       {error && <p style={{ color: '#dc2626' }}>error: {error}</p>}
