@@ -4,10 +4,10 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app } from './app'
 
-// Load repo-root .env (apps/api/src → ../../ = repo root) so `pnpm dev:api`
+// Load repo-root .env (apps/api/src → ../../../ = repo root) so `pnpm dev:api`
 // picks up STT_* / LLM_* without manually exporting shell vars. Tests import
 // `app` directly and set process.env themselves, so this never runs in tests.
-config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../.env') })
+config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env') })
 
 const port = Number(process.env.PORT ?? 8787)
 
