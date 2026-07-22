@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { createVAD, defaultVadConfig } from '@kibotalk/audio/vad'
+import { createVAD } from '@kibotalk/audio/vad'
 import type { VAD } from '@kibotalk/audio/vad'
 import { encodeWav, padBuffer } from '@kibotalk/audio'
-import { useSttProviders, sttUrl, defaultSttProvider, SttProviderSelect } from './SttProviderSelect'
+import { createSegmentAggregator } from '@kibotalk/audio/aggregator'
+import type { SegmentAggregator, AggregatedSegment } from '@kibotalk/audio/aggregator'
+import { useConfig } from './config-store'
+import { sttUrl } from './SttProviderSelect'
 import {
   Badge,
   Button,
@@ -11,11 +14,17 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Input,
-  Label,
 } from '@kibotalk/ui'
 import { AudioSource } from './audio/audio-source'
 import { createSileroInfer, SILERO_VARIANTS } from './audio/silero-vad'
+import {
+  VadParamsFields,
+  AsrPadFields,
+  MergeParamsFields,
+  VadModelSelect,
+  TranscribeModeSelect,
+  TranscribeProviderSelect,
+} from './components/ConfigFields'
 
 type Segment = {
   id: number
@@ -35,11 +44,8 @@ type MergedSegment = {
   transcribing?: boolean
   sttError?: string
   sttMs?: number
-  /** Ids of the VAD segments that were merged into this chunk. */
-  segmentIds: number[]
+  constituents: { buffer: Float32Array; duration: number }[]
 }
-
-type TranscribeMode = 'perSegment' | 'aggregated'
 
 const STATUS_VARIANT = { idle: 'secondary', speech: 'default', silence: 'outline' } as const
 
@@ -49,46 +55,29 @@ export default function VadPanel() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'speech' | 'silence'>('idle')
   const [segments, setSegments] = useState<Segment[]>([])
-  const [speechThreshold, setSpeechThreshold] = useState(defaultVadConfig.speechThreshold)
-  const [exitThreshold, setExitThreshold] = useState(defaultVadConfig.exitThreshold)
-  const [minSilenceDurationMs, setMinSilenceDurationMs] = useState(defaultVadConfig.minSilenceDurationMs)
-  const [minSpeechDurationMs, setMinSpeechDurationMs] = useState(defaultVadConfig.minSpeechDurationMs)
-  const [prePadMs, setPrePadMs] = useState(80)
-  const [postPadMs, setPostPadMs] = useState(80)
-  const [transcribeProvider, setTranscribeProvider] = useState<string | null>(null)
-  const providers = useSttProviders()
-  const [transcribeMode, setTranscribeMode] = useState<TranscribeMode>('aggregated')
-  const [vadVariantId, setVadVariantId] = useState<string>(SILERO_VARIANTS[0].id)
-  const [mergeGapMs, setMergeGapMs] = useState(2000)
-  const [mergeMaxMs, setMergeMaxMs] = useState(30000)
   const [mergedSegments, setMergedSegments] = useState<MergedSegment[]>([])
   const [prob, setProb] = useState(0)
   const [probHistory, setProbHistory] = useState<number[]>([])
 
+  // Shared config (zustand). UI reads via hooks; async callbacks read
+  // useConfig.getState() so they always see the latest values without refs.
+  const speechThreshold = useConfig((s) => s.speechThreshold)
+  const exitThreshold = useConfig((s) => s.exitThreshold)
+  const minSilenceDurationMs = useConfig((s) => s.minSilenceDurationMs)
+  const minSpeechDurationMs = useConfig((s) => s.minSpeechDurationMs)
+  const otherPauseMs = useConfig((s) => s.otherPauseMs)
+  const userPauseMs = useConfig((s) => s.userPauseMs)
+  const transcribeProvider = useConfig((s) => s.transcribeProvider)
+  const transcribeMode = useConfig((s) => s.transcribeMode)
+  const mergeMaxMs = useConfig((s) => s.mergeMaxMs)
+
   const audioRef = useRef<AudioSource | null>(null)
   const vadRef = useRef<VAD | null>(null)
+  const aggregatorRef = useRef<SegmentAggregator | null>(null)
   const segIdRef = useRef(0)
   const mergedIdRef = useRef(0)
   const sampleRateRef = useRef(16000)
   const playCtxRef = useRef<AudioContext | null>(null)
-  const transcribeProviderRef = useRef(transcribeProvider)
-  transcribeProviderRef.current = transcribeProvider
-  const transcribeModeRef = useRef(transcribeMode)
-  transcribeModeRef.current = transcribeMode
-  const mergeGapMsRef = useRef(mergeGapMs)
-  mergeGapMsRef.current = mergeGapMs
-  const mergeMaxMsRef = useRef(mergeMaxMs)
-  mergeMaxMsRef.current = mergeMaxMs
-  const prePadMsRef = useRef(prePadMs)
-  prePadMsRef.current = prePadMs
-  const postPadMsRef = useRef(postPadMs)
-  postPadMsRef.current = postPadMs
-  // Aggregation state (mutated in async chunk/event callbacks → refs, not state).
-  const mergeActiveRef = useRef(false)
-  const mergeChunksRef = useRef<Float32Array[]>([])
-  const lastSpeechEndAtRef = useRef<number | null>(null)
-  const lastSpeechEndIdxRef = useRef(0)
-  const currentMergeSegIdsRef = useRef<number[]>([])
 
   // Live-tune VAD knobs without restarting. speechPadMs is forced to 0 so VAD
   // cuts stay tight; pre/post padding is applied at ASR-send time (see padBuffer).
@@ -102,11 +91,10 @@ export default function VadPanel() {
     })
   }, [speechThreshold, exitThreshold, minSilenceDurationMs, minSpeechDurationMs])
 
-  // Default to the active provider once the list loads (only if the user
-  // hasn't picked one yet).
+  // Live-tune the aggregator's merge/scheduling knobs.
   useEffect(() => {
-    setTranscribeProvider((prev) => prev ?? defaultSttProvider(providers))
-  }, [providers])
+    aggregatorRef.current?.updateConfig({ otherPauseMs, userPauseMs, maxMs: mergeMaxMs })
+  }, [otherPauseMs, userPauseMs, mergeMaxMs])
 
   // Stop playback when the panel unmounts.
   useEffect(() => {
@@ -134,11 +122,12 @@ export default function VadPanel() {
 
   async function transcribeSegment(id: number, buffer: Float32Array) {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, transcribing: true } : s)))
-    const padded = padBuffer(buffer, prePadMsRef.current, postPadMsRef.current, sampleRateRef.current)
+    const { prePadMs, postPadMs, transcribeProvider } = useConfig.getState()
+    const padded = padBuffer(buffer, prePadMs, postPadMs, sampleRateRef.current)
     const _wav = encodeWav(padded, sampleRateRef.current)
     const startedAt = performance.now()
     try {
-      const res = await fetch(sttUrl(transcribeProviderRef.current), { method: 'POST', body: _wav })
+      const res = await fetch(sttUrl(transcribeProvider), { method: 'POST', body: _wav })
       const json = (await res.json()) as { text?: string; error?: string }
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       const sttMs = Math.round(performance.now() - startedAt)
@@ -155,36 +144,13 @@ export default function VadPanel() {
     }
   }
 
-  /** Close the current merge group: keep audio up to last speech end + a small pad,
-   *  trim the long trailing silence that triggered the flush, then send to ASR. */
-  function flushMerge() {
-    if (!mergeActiveRef.current) return
-    const chunks = mergeChunksRef.current
-    const endIdx = Math.min(
-      chunks.length,
-      lastSpeechEndIdxRef.current + Math.ceil((200 * sampleRateRef.current) / 1000 / 512),
-    )
-    const merged = chunks.slice(0, endIdx)
-    const segIds = [...currentMergeSegIdsRef.current]
-    mergeActiveRef.current = false
-    mergeChunksRef.current = []
-    lastSpeechEndAtRef.current = null
-    currentMergeSegIdsRef.current = []
-    if (merged.length === 0) return
-    const raw = concatFloat32(merged)
-    const buffer = padBuffer(raw, prePadMsRef.current, postPadMsRef.current, sampleRateRef.current)
-    const id = ++mergedIdRef.current
-    const duration = buffer.length / sampleRateRef.current
-    setMergedSegments((prev) => [...prev, { id, duration, buffer, segmentIds: segIds }].slice(-20))
-    if (transcribeProviderRef.current !== null) void transcribeMerged(id, buffer)
-  }
-
   async function transcribeMerged(id: number, buffer: Float32Array) {
     setMergedSegments((prev) => prev.map((s) => (s.id === id ? { ...s, transcribing: true } : s)))
+    const { transcribeProvider } = useConfig.getState()
     const startedAt = performance.now()
     try {
       const wav = encodeWav(buffer, sampleRateRef.current)
-      const res = await fetch(sttUrl(transcribeProviderRef.current), { method: 'POST', body: wav })
+      const res = await fetch(sttUrl(transcribeProvider), { method: 'POST', body: wav })
       const json = (await res.json()) as { text?: string; error?: string }
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       const sttMs = Math.round(performance.now() - startedAt)
@@ -209,66 +175,63 @@ export default function VadPanel() {
     setProb(0)
     setProbHistory([])
     setStatus('idle')
-    mergeActiveRef.current = false
-    mergeChunksRef.current = []
-    lastSpeechEndAtRef.current = null
     try {
       const audio = new AudioSource()
       audioRef.current = audio
       sampleRateRef.current = audio.sampleRate
+      const cfg = useConfig.getState()
       const infer = await createSileroInfer(
-        SILERO_VARIANTS.find((v) => v.id === vadVariantId) ?? SILERO_VARIANTS[0],
+        SILERO_VARIANTS.find((v) => v.id === cfg.vadVariantId) ?? SILERO_VARIANTS[0],
         audio.sampleRate,
       )
       const vad = createVAD(infer, { sampleRate: audio.sampleRate })
       vadRef.current = vad
+
+      // Aggregator: same shared module the live session uses. The VAD panel has
+      // no speaker verification, so every segment is fed as 'other' (the panel's
+      // pause threshold is therefore `otherPauseMs`).
+      const aggregator = createSegmentAggregator({
+        sampleRate: audio.sampleRate,
+        otherPauseMs: cfg.otherPauseMs,
+        userPauseMs: cfg.userPauseMs,
+        maxMs: cfg.mergeMaxMs,
+      })
+      aggregator.onFlush((merged: AggregatedSegment) => {
+        const id = ++mergedIdRef.current
+        const { prePadMs, postPadMs, transcribeProvider } = useConfig.getState()
+        const buffer = padBuffer(merged.pcm, prePadMs, postPadMs, sampleRateRef.current)
+        const duration = buffer.length / sampleRateRef.current
+        const constituents = merged.segments.map((s) => ({
+          buffer: s.buffer,
+          duration: s.buffer.length / sampleRateRef.current,
+        }))
+        setMergedSegments((prev) => [...prev, { id, duration, buffer, constituents }].slice(-20))
+        if (transcribeProvider !== null) void transcribeMerged(id, buffer)
+      })
+      aggregatorRef.current = aggregator
+
       vad.on('prob', (p) => {
         setProb(p)
         setProbHistory((prev) => [...prev, p].slice(-120))
       })
-      vad.on('speech-start', () => {
-        setStatus('speech')
-        if (transcribeModeRef.current === 'aggregated' && !mergeActiveRef.current) {
-          mergeActiveRef.current = true
-          mergeChunksRef.current = []
-          lastSpeechEndAtRef.current = null
-          currentMergeSegIdsRef.current = []
-        }
-      })
-      vad.on('speech-end', () => {
-        setStatus('silence')
-        if (transcribeModeRef.current === 'aggregated' && mergeActiveRef.current) {
-          lastSpeechEndAtRef.current = Date.now()
-          lastSpeechEndIdxRef.current = Math.max(0, mergeChunksRef.current.length - 1)
-        }
-      })
+      vad.on('speech-start', () => setStatus('speech'))
+      vad.on('speech-end', () => setStatus('silence'))
       vad.on('speech-ready', (e) => {
         const id = ++segIdRef.current
         setSegments((prev) => [...prev, { id, duration: e.duration, buffer: e.buffer }].slice(-20))
-        if (transcribeModeRef.current === 'aggregated') {
-          currentMergeSegIdsRef.current.push(id)
-        } else if (transcribeProviderRef.current !== null) {
+        const { transcribeMode, transcribeProvider } = useConfig.getState()
+        if (transcribeMode === 'aggregated') {
+          aggregator.feed({
+            buffer: e.buffer,
+            speaker: 'other',
+            startedAt: Date.now() - e.duration * 1000,
+            endedAt: Date.now(),
+          })
+        } else if (transcribeProvider !== null) {
           void transcribeSegment(id, e.buffer)
         }
       })
-      await audio.start((chunk) => {
-        // Tap the raw mic stream (speech + silence) for aggregation so the
-        // silence between sub-segments is preserved in the merged chunk.
-        if (transcribeModeRef.current === 'aggregated' && mergeActiveRef.current) {
-          mergeChunksRef.current.push(chunk)
-          const samples = mergeChunksRef.current.reduce((n, c) => n + c.length, 0)
-          const durMs = (samples / sampleRateRef.current) * 1000
-          if (durMs > mergeMaxMsRef.current) {
-            flushMerge()
-          } else if (
-            lastSpeechEndAtRef.current !== null &&
-            Date.now() - lastSpeechEndAtRef.current > mergeGapMsRef.current
-          ) {
-            flushMerge()
-          }
-        }
-        void vad.processAudio(chunk)
-      })
+      await audio.start((chunk) => void vad.processAudio(chunk))
       setRunning(true)
       setLoading('')
     } catch (e) {
@@ -279,6 +242,9 @@ export default function VadPanel() {
   }
 
   function stop() {
+    aggregatorRef.current?.flush()
+    aggregatorRef.current?.dispose()
+    aggregatorRef.current = null
     audioRef.current?.stop()
     audioRef.current = null
     vadRef.current = null
@@ -304,39 +270,9 @@ export default function VadPanel() {
               <Button variant="destructive" onClick={stop}>停止检测</Button>
             )}
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-medium">自动转写：</span>
-            <SttProviderSelect
-              providers={providers}
-              value={transcribeProvider}
-              onChange={setTranscribeProvider}
-            />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-medium">VAD 模型：</span>
-            <select
-              value={vadVariantId}
-              onChange={(e) => setVadVariantId(e.target.value)}
-              disabled={running}
-              className="h-9 rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-50"
-            >
-              {SILERO_VARIANTS.map((v) => (
-                <option key={v.id} value={v.id}>{v.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-medium">转写模式：</span>
-            <select
-              value={transcribeMode}
-              onChange={(e) => setTranscribeMode(e.target.value as TranscribeMode)}
-              disabled={running}
-              className="h-9 rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-50"
-            >
-              <option value="aggregated">聚合（合并多段，保留中间静音）</option>
-              <option value="perSegment">逐段（每个 VAD 片段单独转写）</option>
-            </select>
-          </div>
+          <TranscribeProviderSelect />
+          <VadModelSelect disabled={running} />
+          <TranscribeModeSelect disabled={running} />
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -350,64 +286,9 @@ export default function VadPanel() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <NumberField
-            label="进入阈值（0.5）"
-            value={speechThreshold}
-            step={0.01}
-            min={0}
-            max={1}
-            onChange={setSpeechThreshold}
-          />
-          <NumberField
-            label="退出阈值（0.3）"
-            value={exitThreshold}
-            step={0.01}
-            min={0}
-            max={1}
-            onChange={setExitThreshold}
-          />
-          <NumberField
-            label="静音结束 ms（400）"
-            value={minSilenceDurationMs}
-            step={50}
-            min={0}
-            onChange={setMinSilenceDurationMs}
-          />
-          <NumberField
-            label="最短语音 ms（250）"
-            value={minSpeechDurationMs}
-            step={50}
-            min={0}
-            onChange={setMinSpeechDurationMs}
-          />
-          <NumberField
-            label="前填充 ms（80）·ASR"
-            value={prePadMs}
-            step={10}
-            min={0}
-            onChange={setPrePadMs}
-          />
-          <NumberField
-            label="后填充 ms（80）·ASR"
-            value={postPadMs}
-            step={10}
-            min={0}
-            onChange={setPostPadMs}
-          />
-          <NumberField
-            label="合并间隙 ms（2000）·聚合"
-            value={mergeGapMs}
-            step={100}
-            min={0}
-            onChange={setMergeGapMs}
-          />
-          <NumberField
-            label="合并上限 ms（30000）·聚合"
-            value={mergeMaxMs}
-            step={1000}
-            min={0}
-            onChange={setMergeMaxMs}
-          />
+          <VadParamsFields />
+          <AsrPadFields />
+          <MergeParamsFields disabled={transcribeMode === 'perSegment'} />
         </div>
 
         <div className="space-y-2">
@@ -480,18 +361,17 @@ export default function VadPanel() {
           {transcribeMode === 'aggregated' ? (
             mergedSegments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                （还没有合并片段——说几句话后停顿 {mergeGapMs}ms 以上会触发一次合并转写）
+                （还没有合并片段——说几句话后停顿 {otherPauseMs}ms 以上会触发一次合并转写）
               </p>
             ) : (
               <ol className="space-y-3 text-sm">
                 {[...mergedSegments].reverse().map((m) => {
-                  const segById = new Map(segments.map((s) => [s.id, s]))
                   return (
                     <li key={m.id} className="rounded-md border bg-card p-3 space-y-2">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">合并 #{m.id}</span>
                         <span className="text-muted-foreground">{(m.duration * 1000).toFixed(0)} ms</span>
-                        <span className="text-muted-foreground">· 含 {m.segmentIds.length} 个片段</span>
+                        <span className="text-muted-foreground">· 含 {m.constituents.length} 个片段</span>
                         <Button
                           variant="outline"
                           size="sm"
@@ -518,24 +398,20 @@ export default function VadPanel() {
                         </div>
                       )}
                       <ol className="ml-3 border-l pl-3 space-y-1">
-                        {m.segmentIds.map((sid) => {
-                          const seg = segById.get(sid)
-                          if (!seg) return null
-                          return (
-                            <li key={sid} className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>片段 #{seg.id}</span>
-                              <span>{(seg.duration * 1000).toFixed(0)} ms</span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-5 px-1.5 text-xs"
-                                onClick={() => playSegment(seg.buffer)}
-                              >
-                                播放
-                              </Button>
-                            </li>
-                          )
-                        })}
+                        {m.constituents.map((c, i) => (
+                          <li key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>片段 {i + 1}</span>
+                            <span>{(c.duration * 1000).toFixed(0)} ms</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-5 px-1.5 text-xs"
+                              onClick={() => playSegment(c.buffer)}
+                            >
+                              播放
+                            </Button>
+                          </li>
+                        ))}
                       </ol>
                     </li>
                   )
@@ -585,49 +461,4 @@ export default function VadPanel() {
       </CardContent>
     </Card>
   )
-}
-
-function NumberField({
-  label,
-  value,
-  step,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  value: number
-  step: number
-  min?: number
-  max?: number
-  onChange: (v: number) => void
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Input
-        type="number"
-        value={value}
-        step={step}
-        min={min}
-        max={max}
-        onChange={(e) => {
-          const v = Number(e.target.value)
-          if (Number.isFinite(v)) onChange(v)
-        }}
-        className="h-8"
-      />
-    </div>
-  )
-}
-
-function concatFloat32(chunks: Float32Array[]): Float32Array {
-  const total = chunks.reduce((n, c) => n + c.length, 0)
-  const out = new Float32Array(total)
-  let off = 0
-  for (const c of chunks) {
-    out.set(c, off)
-    off += c.length
-  }
-  return out
 }

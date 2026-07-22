@@ -17,7 +17,8 @@
     "@kibotalk/speaker": "workspace:*",
     "@kibotalk/ui": "workspace:*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

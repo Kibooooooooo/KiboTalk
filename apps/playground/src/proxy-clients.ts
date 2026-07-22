@@ -3,12 +3,16 @@ import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { encodeWav, padBuffer } from '@kibotalk/audio'
 import { parseSseStream } from './sse'
 import { extractCandidates } from './partial-json'
+import { sttUrl } from './SttProviderSelect'
+import { useConfig } from './config-store'
 
 /**
  * Pipeline STT client that talks to the /stt proxy. The proxy holds the
  * provider key; the browser just ships WAV. `pcm` is the VAD-cut segment at
  * `sampleRate` (16kHz mono). Pre/post silence padding is applied here (ASR
- * preprocessing) so VAD cuts can stay tight (speechPadMs = 0).
+ * preprocessing) so VAD cuts can stay tight (speechPadMs = 0). The provider
+ * comes from the shared config store, so the live session honors the same
+ * provider selection as the VAD panel.
  */
 export class ProxySttClient implements SttClient {
   private prePadMs = 0;
@@ -25,7 +29,7 @@ export class ProxySttClient implements SttClient {
   async transcribe(pcm: Float32Array, signal: AbortSignal): Promise<string> {
     const padded = padBuffer(pcm, this.prePadMs, this.postPadMs, this.sampleRate);
     const wav = encodeWav(padded, this.sampleRate);
-    const res = await fetch('/stt', { method: 'POST', body: wav, signal });
+    const res = await fetch(sttUrl(useConfig.getState().transcribeProvider), { method: 'POST', body: wav, signal });
     const json = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
     if (!res.ok) throw new Error(json.error ?? `STT HTTP ${res.status}`);
     return json.text ?? '';

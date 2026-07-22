@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useConfig } from './config-store'
 
 export type SttProvider = { id: string; label: string; model: string; active: boolean }
 
@@ -32,6 +33,20 @@ export function sttUrl(provider: string | null): string {
 /** Pick the default provider: the active one, else the first available. */
 export function defaultSttProvider(providers: SttProvider[]): string | null {
   return providers.find((p) => p.active)?.id ?? providers[0]?.id ?? null
+}
+
+/**
+ * Shared hook: fetch providers once, bootstrap the store's transcribeProvider
+ * to the active one (only the first time), and return the current selection.
+ */
+export function useTranscribeProvider(): { providers: SttProvider[]; provider: string | null } {
+  const providers = useSttProviders()
+  const provider = useConfig((s) => s.transcribeProvider)
+  const bootstrap = useConfig((s) => s.bootstrapProvider)
+  useEffect(() => {
+    bootstrap(providers)
+  }, [providers, bootstrap])
+  return { providers, provider }
 }
 
 type SttProviderSelectProps = {

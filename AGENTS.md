@@ -63,6 +63,7 @@ These are spec-named choices. **Do not rewrite or substitute them** with hand-ro
 - **No backward-compatibility guards.** If a rename/breakage is needed, do it directly and update callers in the same change.
 - **Playground UI is Chinese** — labels, examples, and sample content in Chinese.
 - **Tailwind v4 + shadcn/ui** for all UI (playground included). Shared primitives in `packages/ui`. When you add/update a `packages/ui` component, keep this README's component list in sync.
+- **Shared playground config lives in one Zustand store** (`apps/playground/src/config-store.ts`, `useConfig`) — the React analog of a Pinia store. VAD/ASR/merge/speaker knobs and selectors (provider, VAD model, transcribe mode) are shared across the VAD panel and the live session: change one on a tab and it's already aligned on the other. Subscribe per-field (`useConfig(s => s.field)`); in async callbacks read `useConfig.getState()`. Stage-grouped field components live in `apps/playground/src/components/ConfigFields.tsx` (`VadParamsFields`, `AsrPadFields`, `MergeParamsFields`, `VadModelSelect`, `TranscribeModeSelect`, `TranscribeProviderSelect`, `NumberField`) — reuse these instead of re-declaring the same knobs.
 
 ## Commands
 

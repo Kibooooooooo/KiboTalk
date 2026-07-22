@@ -5,8 +5,8 @@ import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { InMemoryConversationStorage } from '@kibotalk/conversation'
 import { EmbeddingSpeakerVerifier, IndexedDbEmbeddingStorage } from '@kibotalk/speaker'
 import type { Embedding } from '@kibotalk/speaker'
-import { createVAD, defaultVadConfig } from '@kibotalk/audio/vad'
-import type { VAD, VadConfig } from '@kibotalk/audio/vad'
+import { createVAD } from '@kibotalk/audio/vad'
+import type { VAD } from '@kibotalk/audio/vad'
 import { createSegmentAggregator } from '@kibotalk/audio/aggregator'
 import type { SegmentAggregator } from '@kibotalk/audio/aggregator'
 import {
@@ -24,21 +24,17 @@ import { AudioSource } from './audio/audio-source'
 import { createSileroInfer, SILERO_VARIANTS } from './audio/silero-vad'
 import { createWorkerEmbedAudio } from './audio/speaker-embed'
 import { ProxySttClient, ProxyLlmClient } from './proxy-clients'
+import { useConfig } from './config-store'
+import {
+  VadParamsFields,
+  AsrPadFields,
+  MergeParamsFields,
+  VadModelSelect,
+  TranscribeModeSelect,
+  NumberField,
+} from './components/ConfigFields'
 
 type TurnView = ConversationTurn & { candidates?: ReplyCandidate[] }
-
-/** VAD knobs exposed in the UI (sampleRate is fixed by the mic, not tunable). */
-type TunableVadParams = Pick<
-  VadConfig,
-  'speechThreshold' | 'exitThreshold' | 'minSilenceDurationMs' | 'minSpeechDurationMs'
->
-
-const DEFAULT_VAD_PARAMS: TunableVadParams = {
-  speechThreshold: defaultVadConfig.speechThreshold,
-  exitThreshold: defaultVadConfig.exitThreshold,
-  minSilenceDurationMs: defaultVadConfig.minSilenceDurationMs,
-  minSpeechDurationMs: defaultVadConfig.minSpeechDurationMs,
-}
 
 const STATE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   IDLE: 'secondary',
@@ -60,14 +56,22 @@ export default function LiveSession() {
   const [vadStatus, setVadStatus] = useState('idle')
   const [mode, setMode] = useState<'auto' | 'manual' | 'checking'>('checking')
   const [confidence, setConfidence] = useState<number | null>(null)
-  const [vadParams, setVadParams] = useState<TunableVadParams>(DEFAULT_VAD_PARAMS)
-  const [prePadMs, setPrePadMs] = useState(0)
-  const [postPadMs, setPostPadMs] = useState(0)
-  const [otherPauseMs, setOtherPauseMs] = useState(1000)
-  const [userPauseMs, setUserPauseMs] = useState(1000)
-  const [mergeMaxMs, setMergeMaxMs] = useState(10000)
-  const [mergeEnabled, setMergeEnabled] = useState(true)
-  const [speakerThreshold, setSpeakerThreshold] = useState(0.8)
+
+  // Shared config (zustand). Live-tunable; async callbacks read getState().
+  const vadParams = useConfig((s) => ({
+    speechThreshold: s.speechThreshold,
+    exitThreshold: s.exitThreshold,
+    minSilenceDurationMs: s.minSilenceDurationMs,
+    minSpeechDurationMs: s.minSpeechDurationMs,
+  }))
+  const prePadMs = useConfig((s) => s.prePadMs)
+  const postPadMs = useConfig((s) => s.postPadMs)
+  const otherPauseMs = useConfig((s) => s.otherPauseMs)
+  const userPauseMs = useConfig((s) => s.userPauseMs)
+  const mergeMaxMs = useConfig((s) => s.mergeMaxMs)
+  const transcribeMode = useConfig((s) => s.transcribeMode)
+  const speakerThreshold = useConfig((s) => s.speakerThreshold)
+  const mergeEnabled = transcribeMode === 'aggregated'
 
   const speakerRef = useRef(speaker)
   speakerRef.current = speaker
@@ -81,12 +85,10 @@ export default function LiveSession() {
   const vadRef = useRef<VAD | null>(null)
   const sttRef = useRef<ProxySttClient | null>(null)
   const aggregatorRef = useRef<SegmentAggregator | null>(null)
-  const mergeEnabledRef = useRef(mergeEnabled)
-  mergeEnabledRef.current = mergeEnabled
 
   // Live-tune VAD knobs and speaker threshold without restarting the session.
   useEffect(() => {
-    vadRef.current?.updateConfig(vadParams)
+    vadRef.current?.updateConfig({ ...vadParams, speechPadMs: 0 })
   }, [vadParams])
   useEffect(() => {
     verifierRef.current?.setThreshold(speakerThreshold)
@@ -128,7 +130,8 @@ export default function LiveSession() {
       setLoading('正在请求麦克风 + 加载 VAD 模型…')
       const audio = new AudioSource()
       audioRef.current = audio
-      const infer = await createSileroInfer(SILERO_VARIANTS[0], audio.sampleRate)
+      const vadVariant = SILERO_VARIANTS.find((v) => v.id === useConfig.getState().vadVariantId) ?? SILERO_VARIANTS[0]
+      const infer = await createSileroInfer(vadVariant, audio.sampleRate)
       // VAD cuts stay tight (speechPadMs = 0); padding is applied at ASR-send
       // time in the ProxySttClient (mirrors the VAD panel's ASR-preprocessing model).
       const vad = createVAD(infer, { ...vadParams, speechPadMs: 0, sampleRate: audio.sampleRate })
@@ -194,7 +197,7 @@ export default function LiveSession() {
         const startedAt = now - e.duration * 1000
         const endedAt = now
         const deliver = (speaker: 'user' | 'other') => {
-          if (mergeEnabledRef.current) {
+          if (useConfig.getState().transcribeMode === 'aggregated') {
             aggregatorRef.current?.feed({ buffer: e.buffer, speaker, startedAt, endedAt })
           } else {
             void pipeline.ingestSegment({ pcm: e.buffer, speaker, startedAt, endedAt })
@@ -309,18 +312,8 @@ export default function LiveSession() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <input
-                id="live-merge"
-                type="checkbox"
-                checked={mergeEnabled}
-                onChange={(e) => setMergeEnabled(e.target.checked)}
-                className="h-4 w-4 rounded border-input"
-              />
-              <Label htmlFor="live-merge" className="cursor-pointer">
-                合并片段（暂停阈值触发合并成一个轮次；关掉则每个 VAD 片段立刻成一个轮次）
-              </Label>
-            </div>
+            <VadModelSelect disabled={running} />
+            <TranscribeModeSelect disabled={running} />
           </div>
 
           <div className="flex gap-2">
@@ -367,84 +360,19 @@ export default function LiveSession() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-            <NumberField
-              label="进入阈值（0.5）"
-              value={vadParams.speechThreshold}
-              step={0.01}
-              min={0}
-              max={1}
-              onChange={(v) => setVadParams((p) => ({ ...p, speechThreshold: v }))}
-            />
-            <NumberField
-              label="退出阈值（0.3）"
-              value={vadParams.exitThreshold}
-              step={0.01}
-              min={0}
-              max={1}
-              onChange={(v) => setVadParams((p) => ({ ...p, exitThreshold: v }))}
-            />
-            <NumberField
-              label="静音结束 ms（400）"
-              value={vadParams.minSilenceDurationMs}
-              step={50}
-              min={0}
-              onChange={(v) => setVadParams((p) => ({ ...p, minSilenceDurationMs: v }))}
-            />
-            <NumberField
-              label="前填充 ms（ASR，0）"
-              value={prePadMs}
-              step={10}
-              min={0}
-              onChange={setPrePadMs}
-            />
-            <NumberField
-              label="后填充 ms（ASR，0）"
-              value={postPadMs}
-              step={10}
-              min={0}
-              onChange={setPostPadMs}
-            />
-            <NumberField
-              label="最短语音 ms（250）"
-              value={vadParams.minSpeechDurationMs}
-              step={50}
-              min={0}
-              onChange={(v) => setVadParams((p) => ({ ...p, minSpeechDurationMs: v }))}
-            />
+            <VadParamsFields />
+            <AsrPadFields />
             <NumberField
               label="说话人阈值（0.8）"
               value={speakerThreshold}
               step={0.05}
               min={0}
               max={1}
-              onChange={setSpeakerThreshold}
+              onChange={(v) => useConfig.getState().patch({ speakerThreshold: v })}
             />
-            <NumberField
-              label="对方暂停 ms（1000）"
-              value={otherPauseMs}
-              step={100}
-              min={0}
-              onChange={setOtherPauseMs}
-              disabled={!mergeEnabled}
-            />
-            <NumberField
-              label="我方暂停 ms（1000）"
-              value={userPauseMs}
-              step={100}
-              min={0}
-              onChange={setUserPauseMs}
-              disabled={!mergeEnabled}
-            />
-            <NumberField
-              label="合并上限 ms（10000）"
-              value={mergeMaxMs}
-              step={1000}
-              min={0}
-              onChange={setMergeMaxMs}
-              disabled={!mergeEnabled}
-            />
+            <MergeParamsFields disabled={!mergeEnabled} />
           </div>
-          <Button variant="outline" size="sm" onClick={() => { setVadParams(DEFAULT_VAD_PARAMS); setPrePadMs(0); setPostPadMs(0); setOtherPauseMs(1000); setUserPauseMs(1000); setMergeMaxMs(10000); setSpeakerThreshold(0.8) }}>
+          <Button variant="outline" size="sm" onClick={() => useConfig.getState().reset()}>
             恢复默认
           </Button>
         </CardContent>
@@ -510,43 +438,6 @@ export default function LiveSession() {
           </CardContent>
         </Card>
       </div>
-    </div>
-  )
-}
-
-function NumberField({
-  label,
-  value,
-  step,
-  min,
-  max,
-  disabled,
-  onChange,
-}: {
-  label: string
-  value: number
-  step: number
-  min?: number
-  max?: number
-  disabled?: boolean
-  onChange: (v: number) => void
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Input
-        type="number"
-        value={value}
-        step={step}
-        min={min}
-        max={max}
-        disabled={disabled}
-        onChange={(e) => {
-          const v = Number(e.target.value)
-          if (Number.isFinite(v)) onChange(v)
-        }}
-        className="h-8"
-      />
     </div>
   )
 }

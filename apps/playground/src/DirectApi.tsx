@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { encodeWav } from '@kibotalk/audio'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import {
@@ -16,7 +16,8 @@ import {
 import { extractCandidates } from './partial-json'
 import { parseSseStream } from './sse'
 import { AudioSource } from './audio/audio-source'
-import { useSttProviders, sttUrl, defaultSttProvider, SttProviderSelect } from './SttProviderSelect'
+import { SttProviderSelect, useTranscribeProvider, sttUrl } from './SttProviderSelect'
+import { useConfig } from './config-store'
 
 type CandidateState = ReplyCandidate[]
 
@@ -41,12 +42,8 @@ export default function DirectApi() {
 }
 
 function SttPanel() {
-  const providers = useSttProviders()
-  const [provider, setProvider] = useState<string | null>(null)
-  // Default to the active provider once the list loads.
-  useEffect(() => {
-    setProvider((prev) => prev ?? defaultSttProvider(providers))
-  }, [providers])
+  const { providers, provider } = useTranscribeProvider()
+  const patch = useConfig((s) => s.patch)
   const [transcription, setTranscription] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -62,7 +59,7 @@ function SttPanel() {
       // Always via the /stt proxy (keys stay server-side). ?provider= overrides
       // the active provider per request; the server resolves base URL / key /
       // model from its own env. See ADR 0002.
-      const res = await fetch(sttUrl(provider), { method: 'POST', body: wav })
+      const res = await fetch(sttUrl(useConfig.getState().transcribeProvider), { method: 'POST', body: wav })
       const json = (await res.json()) as { text?: string; error?: string }
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       setTranscription(json.text ?? '')
@@ -122,7 +119,7 @@ function SttPanel() {
             <SttProviderSelect
               providers={providers}
               value={provider}
-              onChange={setProvider}
+              onChange={(p) => patch({ transcribeProvider: p })}
               allowOff={false}
               offLabel=""
             />
