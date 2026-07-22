@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { encodeWav } from '@kibotalk/audio'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { extractCandidates } from './partial-json'
+import { parseSseStream } from './sse'
 
 type CandidateState = ReplyCandidate[]
 
@@ -115,32 +116,17 @@ function LlmPanel() {
         const txt = await res.text().catch(() => '')
         throw new Error(`HTTP ${res.status} ${txt}`)
       }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let event = 'message'
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        let idx: number
-        while ((idx = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, idx).trim()
-          buffer = buffer.slice(idx + 1)
-          if (!line) continue
-          if (line.startsWith('event:')) event = line.slice(6).trim()
-          else if (line.startsWith('data:')) {
-            const data = line.slice(5).trim()
-            if (event === 'error') setError(data)
-            else if (event === 'token') {
-              setRaw((prev) => prev + data)
-              setCandidates((prev) => {
-                const next = extractCandidates(prev + data)
-                return next.length > prev.length ? next : prev
-              })
-            }
-            event = 'message'
-          }
+      for await (const msg of parseSseStream(res)) {
+        if (msg.event === 'error') setError(msg.data)
+        else if (msg.event === 'token') {
+          setRaw((prev) => {
+            const next = prev + msg.data
+            setCandidates((cur) => {
+              const parsed = extractCandidates(next)
+              return parsed.length > cur.length ? parsed : cur
+            })
+            return next
+          })
         }
       }
     } catch (e) {

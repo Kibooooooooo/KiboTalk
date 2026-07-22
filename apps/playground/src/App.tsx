@@ -4,11 +4,12 @@ import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { createSession } from './session'
 import type { SessionHandle } from './session'
 import DirectApi from './DirectApi'
+import LiveSession from './LiveSession'
 
 type TurnView = ConversationTurn & { candidates?: ReplyCandidate[]; failed?: boolean }
 
 export default function App() {
-  const [tab, setTab] = useState<'pipeline' | 'direct'>('pipeline')
+  const [tab, setTab] = useState<'pipeline' | 'direct' | 'live'>('pipeline')
   const scriptedRef = useRef('こんにちは')
   const sessionRef = useRef<SessionHandle | null>(null)
   if (!sessionRef.current) sessionRef.current = createSession(() => scriptedRef.current)
@@ -86,9 +87,12 @@ export default function App() {
       <nav style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         <button onClick={() => setTab('pipeline')} style={tabBtn(tab === 'pipeline')}>Pipeline simulator</button>
         <button onClick={() => setTab('direct')} style={tabBtn(tab === 'direct')}>Direct API (STT/LLM)</button>
+        <button onClick={() => setTab('live')} style={tabBtn(tab === 'live')}>Live session</button>
       </nav>
       {tab === 'direct' ? (
         <DirectApi />
+      ) : tab === 'live' ? (
+        <LiveSession />
       ) : (
         <>
       <h1>Playground — Pipeline session simulator</h1>
