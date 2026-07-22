@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PipelineEvent } from '@kibotalk/pipeline'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { createSession } from './session'
 import type { SessionHandle } from './session'
+import DirectApi from './DirectApi'
 
 type TurnView = ConversationTurn & { candidates?: ReplyCandidate[]; failed?: boolean }
 
 export default function App() {
+  const [tab, setTab] = useState<'pipeline' | 'direct'>('pipeline')
   const scriptedRef = useRef('こんにちは')
   const sessionRef = useRef<SessionHandle | null>(null)
   if (!sessionRef.current) sessionRef.current = createSession(() => scriptedRef.current)
@@ -81,6 +83,14 @@ export default function App() {
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 880 }}>
+      <nav style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <button onClick={() => setTab('pipeline')} style={tabBtn(tab === 'pipeline')}>Pipeline simulator</button>
+        <button onClick={() => setTab('direct')} style={tabBtn(tab === 'direct')}>Direct API (STT/LLM)</button>
+      </nav>
+      {tab === 'direct' ? (
+        <DirectApi />
+      ) : (
+        <>
       <h1>Playground — Pipeline session simulator</h1>
       <p style={{ color: '#666' }}>
         Feed scripted audio segments into the pipeline state machine (mock STT / LLM / stub speaker).
@@ -177,6 +187,8 @@ export default function App() {
           </pre>
         </section>
       </div>
+        </>
+      )}
     </main>
   )
 }
@@ -219,4 +231,15 @@ const candidateStyle: React.CSSProperties = {
   borderRadius: 6,
   padding: '0.5rem 0.7rem',
   marginBottom: '0.4rem',
+}
+
+function tabBtn(active: boolean): React.CSSProperties {
+  return {
+    background: active ? '#0f172a' : '#e2e8f0',
+    color: active ? 'white' : '#0f172a',
+    border: 'none',
+    padding: '0.35rem 0.8rem',
+    borderRadius: 6,
+    cursor: 'pointer',
+  }
 }

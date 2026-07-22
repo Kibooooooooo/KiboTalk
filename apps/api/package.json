@@ -12,6 +12,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
+    "@kibotalk/audio": "workspace:*",
+    "@kibotalk/conversation": "workspace:*",
+    "@kibotalk/llm": "workspace:*",
+    "@kibotalk/prompts": "workspace:*",
+    "@kibotalk/stt": "workspace:*",
     "hono": "^4.6.0"
   },
   "devDependencies": {
