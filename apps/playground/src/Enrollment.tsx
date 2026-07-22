@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { EmbeddingSpeakerVerifier, IndexedDbEmbeddingStorage } from '@kibotalk/speaker'
 import { createVAD } from '@kibotalk/audio/vad'
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kibotalk/ui'
 import { AudioSource } from './audio/audio-source'
 import { createSileroInfer } from './audio/silero-vad'
 import { createWorkerEmbedAudio } from './audio/speaker-embed'
 
-const PASSPHRASE = 'こんにちは。今日もいい一日になりますように。'
+const PASSPHRASE = '你好，今天也请多多关照。'
 type Status = 'idle' | 'requesting' | 'recording' | 'processing' | 'ready'
 
 export default function Enrollment() {
@@ -51,11 +52,10 @@ export default function Enrollment() {
         })
         void audio.start((chunk) => void vad.processAudio(chunk))
         setStatus('recording')
-        // Safety timeout: stop after 10s even if no speech-ready fires.
         setTimeout(() => {
           if (!done) {
             done = true
-            reject(new Error('no speech detected within 10s'))
+            reject(new Error('10 秒内未检测到语音'))
           }
         }, 10000)
       })
@@ -83,33 +83,42 @@ export default function Enrollment() {
   }
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 880 }}>
-      <h1>Playground — Speaker enrollment</h1>
-      <p style={{ color: '#666' }}>
-        Read the passphrase once to build your voice embedding (stored on this device only).
-        After enrolling, the live session auto-detects you vs the other person.
-      </p>
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle>声纹录入</CardTitle>
+        <CardDescription>
+          朗读一次固定文案以建立你的声纹（仅保存在本设备）。录入后，实时会话会自动判定你与对方。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg bg-muted/60 p-4">
+          <div className="text-sm text-muted-foreground mb-1">固定文案：</div>
+          <div className="text-xl font-semibold">{PASSPHRASE}</div>
+        </div>
 
-      <section style={{ background: '#f8fafc', padding: '1rem', borderRadius: 8, marginBottom: '1rem' }}>
-        <div style={{ color: '#475569', marginBottom: '0.5rem' }}>Passphrase:</div>
-        <div style={{ fontSize: '1.4rem', fontWeight: 600 }}>{PASSPHRASE}</div>
-      </section>
+        <div className="flex gap-2">
+          <Button
+            onClick={record}
+            disabled={status === 'requesting' || status === 'recording' || status === 'processing'}
+          >
+            {enrolled ? '重新录制' : '录制文案'}
+          </Button>
+          {enrolled && <Button variant="outline" onClick={clearEnrollment}>清除声纹</Button>}
+        </div>
 
-      <section style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        <button onClick={record} disabled={status === 'requesting' || status === 'recording' || status === 'processing'}>
-          {enrolled ? 'Re-record' : 'Record passphrase'}
-        </button>
-        {enrolled && <button onClick={clearEnrollment}>Clear enrollment</button>}
-      </section>
-
-      <section>
-        {status === 'requesting' && <p style={{ color: '#888' }}>requesting mic + loading VAD…</p>}
-        {status === 'recording' && <p style={{ color: '#f59e0b' }}>recording — read the passphrase now…</p>}
-        {status === 'processing' && <p style={{ color: '#888' }}>computing embedding (loads wavlm on first use)…</p>}
-        {status === 'ready' && <p style={{ color: '#10b981' }}>enrolled — live session will auto-detect you.</p>}
-        {enrolled && status === 'idle' && <p style={{ color: '#10b981' }}>already enrolled on this device.</p>}
-        {error && <p style={{ color: '#dc2626' }}>error: {error}</p>}
-      </section>
-    </main>
+        <div className="space-y-1 text-sm">
+          {status === 'requesting' && <p className="text-muted-foreground">正在请求麦克风 + 加载 VAD…</p>}
+          {status === 'recording' && <p className="text-amber-600">录制中——请现在朗读文案…</p>}
+          {status === 'processing' && (
+            <p className="text-muted-foreground">正在计算声纹（首次使用会加载 wavlm）…</p>
+          )}
+          {status === 'ready' && <p className="text-emerald-600">已录入——实时会话将自动判定你。</p>}
+          {enrolled && status === 'idle' && (
+            <p className="text-emerald-600">本设备已有声纹。</p>
+          )}
+          {error && <p className="text-destructive">错误：{error}</p>}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

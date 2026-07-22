@@ -1,23 +1,41 @@
 import { useRef, useState } from 'react'
 import { encodeWav } from '@kibotalk/audio'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Separator,
+  Textarea,
+} from '@kibotalk/ui'
 import { extractCandidates } from './partial-json'
 import { parseSseStream } from './sse'
+import { AudioSource } from './audio/audio-source'
 
 type CandidateState = ReplyCandidate[]
 
 export default function DirectApi() {
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 880 }}>
-      <h1>Playground — Direct API (real /stt + /llm)</h1>
-      <p style={{ color: '#666' }}>
-        Exercise the proxy routes directly. Requires <code>STT_OPENROUTER_*</code> /
-        <code> LLM_OPENROUTER_*</code> env on the api server.
-      </p>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>直连 API — 真实 /stt + /llm</CardTitle>
+          <CardDescription>
+            直接调用代理路由。需要在 api 服务端配置 <code>STT_OPENROUTER_*</code> /{' '}
+            <code>LLM_OPENROUTER_*</code> 环境变量（见仓库根目录 .env.example）。
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
       <SttPanel />
-      <hr style={{ margin: '2rem 0' }} />
+      <Separator />
       <LlmPanel />
-    </main>
+    </div>
   )
 }
 
@@ -25,7 +43,10 @@ function SttPanel() {
   const [transcription, setTranscription] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [recording, setRecording] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const audioRef = useRef<AudioSource | null>(null)
+  const chunksRef = useRef<Float32Array[]>([])
 
   async function sendWav(wav: ArrayBuffer) {
     setBusy(true)
@@ -50,35 +71,83 @@ function SttPanel() {
   }
 
   function sendSample() {
-    // 1 second of 440Hz sine at 16kHz, as a WAV — for testing the wire without a file.
     const sampleRate = 16000
     const pcm = new Float32Array(sampleRate)
     for (let i = 0; i < sampleRate; i++) pcm[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.3
     sendWav(encodeWav(pcm, sampleRate))
   }
 
+  async function startRecording() {
+    setError('')
+    setTranscription('')
+    try {
+      const audio = new AudioSource()
+      audioRef.current = audio
+      chunksRef.current = []
+      await audio.start((chunk) => {
+        chunksRef.current.push(new Float32Array(chunk))
+      })
+      setRecording(true)
+    } catch (e) {
+      setError((e as Error).message)
+      audioRef.current?.stop()
+      audioRef.current = null
+    }
+  }
+
+  async function stopAndTranscribe() {
+    const audio = audioRef.current
+    const sampleRate = audio?.sampleRate ?? 16000
+    audio?.stop()
+    audioRef.current = null
+    setRecording(false)
+    const chunks = chunksRef.current
+    chunksRef.current = []
+    if (chunks.length === 0) return
+    const total = chunks.reduce((n, c) => n + c.length, 0)
+    const pcm = new Float32Array(total)
+    let off = 0
+    for (const c of chunks) {
+      pcm.set(c, off)
+      off += c.length
+    }
+    await sendWav(encodeWav(pcm, sampleRate))
+  }
+
   return (
-    <section>
-      <h2>/stt — transcription</h2>
-      <section style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-        <input ref={fileRef} type="file" accept=".wav,audio/wav" onChange={onFile} />
-        <button onClick={sendSample} disabled={busy}>Send sample WAV</button>
-      </section>
-      {busy && <p style={{ color: '#888' }}>transcribing…</p>}
-      {error && <p style={{ color: '#dc2626' }}>error: {error}</p>}
-      {transcription && (
-        <p style={{ background: '#f8fafc', padding: '0.6rem', borderRadius: 6 }}>
-          <b>text:</b> {transcription}
-        </p>
-      )}
-    </section>
+    <Card>
+      <CardHeader>
+        <CardTitle>/stt — 语音转写</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <input ref={fileRef} type="file" accept=".wav,audio/wav" onChange={onFile} className="text-sm" />
+          <Button variant="outline" onClick={sendSample} disabled={busy || recording}>发送示例 WAV</Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {!recording ? (
+            <Button onClick={startRecording} disabled={busy}>开始录音</Button>
+          ) : (
+            <Button variant="destructive" onClick={stopAndTranscribe}>停止并转写</Button>
+          )}
+          {recording && <span className="text-sm text-amber-600">录音中…（再次点击结束）</span>}
+        </div>
+        {busy && <p className="text-sm text-muted-foreground">转写中…</p>}
+        {error && <p className="text-sm text-destructive">错误：{error}</p>}
+        {transcription && (
+          <p className="rounded-md bg-muted/60 p-3 text-sm">
+            <b>文本：</b>{transcription}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
 function LlmPanel() {
   const [level, setLevel] = useState('N5')
   const [scene, setScene] = useState('便利店')
-  const [contextText, setContextText] = useState('other: いらっしゃいませ\nuser: （我想说）只是看看')
+  const [contextText, setContextText] = useState('other: 你好，欢迎光临！\nuser: （我想说）我只是随便看看')
   const [candidates, setCandidates] = useState<CandidateState>([])
   const [raw, setRaw] = useState('')
   const [error, setError] = useState('')
@@ -142,62 +211,70 @@ function LlmPanel() {
   }
 
   return (
-    <section>
-      <h2>/llm — 3 reply candidates (streaming)</h2>
-      <section style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-        <label>
-          level:{' '}
-          <select value={level} onChange={(e) => setLevel(e.target.value)}>
-            {['N5', 'N4', 'N3', 'N2', 'N1'].map((l) => (
-              <option key={l} value={l}>{l}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          scene: <input value={scene} onChange={(e) => setScene(e.target.value)} style={{ width: 140 }} />
-        </label>
-      </section>
-      <textarea
-        value={contextText}
-        onChange={(e) => setContextText(e.target.value)}
-        rows={4}
-        style={{ width: '100%', fontFamily: 'monospace', marginBottom: '0.5rem' }}
-      />
-      <section style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-        <button onClick={generate} disabled={busy}>Generate</button>
-        <button onClick={abort} disabled={!busy}>Abort</button>
-      </section>
-      {error && <p style={{ color: '#dc2626' }}>error: {error}</p>}
-      {candidates.length > 0 ? (
-        <ol style={{ listStyle: 'none', padding: 0 }}>
-          {candidates.map((c) => (
-            <li key={c.id} style={candidateStyle}>
-              <div style={{ fontWeight: 600 }}>{c.targetText}</div>
-              <div>{c.meaningZh}</div>
-              <div style={{ color: '#888', fontSize: '0.85rem' }}>{c.reading}</div>
-            </li>
-          ))}
-        </ol>
-      ) : busy ? (
-        <p style={{ color: '#888' }}>streaming…</p>
-      ) : (
-        <p style={{ color: '#999' }}>(no candidates yet)</p>
-      )}
-      {raw && (
-        <details style={{ marginTop: '0.75rem' }}>
-          <summary>raw stream</summary>
-          <pre style={{ background: '#0f172a', color: '#e2e8f0', padding: '0.6rem', fontSize: '0.8rem', overflow: 'auto' }}>
-{raw}
-          </pre>
-        </details>
-      )}
-    </section>
-  )
-}
+    <Card>
+      <CardHeader>
+        <CardTitle>/llm — 3 条回复候选（流式）</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="llm-level">水平</Label>
+            <select
+              id="llm-level"
+              value={level}
+              onChange={(e) => setLevel(e.target.value)}
+              className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+            >
+              {['N5', 'N4', 'N3', 'N2', 'N1'].map((l) => (
+                <option key={l} value={l}>{l}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="llm-scene">场景</Label>
+            <Input id="llm-scene" value={scene} onChange={(e) => setScene(e.target.value)} className="w-36" />
+          </div>
+        </div>
 
-const candidateStyle: React.CSSProperties = {
-  border: '1px solid #e2e8f0',
-  borderRadius: 6,
-  padding: '0.5rem 0.7rem',
-  marginBottom: '0.4rem',
+        <Textarea
+          value={contextText}
+          onChange={(e) => setContextText(e.target.value)}
+          rows={4}
+          className="font-mono"
+        />
+
+        <div className="flex gap-2">
+          <Button onClick={generate} disabled={busy}>生成</Button>
+          <Button variant="outline" onClick={abort} disabled={!busy}>中止</Button>
+        </div>
+
+        {error && <p className="text-sm text-destructive">错误：{error}</p>}
+
+        {candidates.length > 0 ? (
+          <ol className="space-y-2">
+            {candidates.map((c) => (
+              <li key={c.id} className="rounded-md border p-3">
+                <div className="font-semibold">{c.targetText}</div>
+                <div className="text-sm">{c.meaningZh}</div>
+                <div className="text-xs text-muted-foreground">{c.reading}</div>
+              </li>
+            ))}
+          </ol>
+        ) : busy ? (
+          <p className="text-sm text-muted-foreground">正在流式生成…</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">（还没有候选）</p>
+        )}
+
+        {raw && (
+          <details>
+            <summary className="text-sm cursor-pointer">原始流</summary>
+            <pre className="bg-slate-950 text-slate-200 rounded-md p-3 text-xs overflow-auto mt-2">
+{raw}
+            </pre>
+          </details>
+        )}
+      </CardContent>
+    </Card>
+  )
 }

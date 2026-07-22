@@ -78,6 +78,11 @@ export class EmbeddingSpeakerVerifier implements SpeakerVerifier {
     const confidence = sim >= this.threshold ? sim : 1 - sim
     return { speaker, confidence }
   }
+
+  /** Update the cosine-similarity threshold at runtime (playground tuning). */
+  setThreshold(threshold: number): void {
+    this.threshold = threshold
+  }
 }
 
 function averageVectors(vectors: Float32Array[]): Float32Array {
