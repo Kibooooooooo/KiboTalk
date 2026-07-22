@@ -40,7 +40,7 @@ app.post('/llm', (c) =>
       level?: string
       scene?: string
     } | null
-    const prompt = renderReplySuggestionsPrompt({
+    const prompt = await renderReplySuggestionsPrompt({
       context: body?.context ?? [],
       level: body?.level ?? 'N5',
       scene: body?.scene ?? '通用',

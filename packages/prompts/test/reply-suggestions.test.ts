@@ -12,7 +12,7 @@ function turn(speaker: 'user' | 'other', text: string): ConversationTurn {
   }
 }
 
-describe('renderReplySuggestionsPrompt', () => {
+describe('renderReplySuggestionsPrompt', async () => {
   const args = {
     context: [
       turn('other', 'いらっしゃいませ'),
@@ -22,7 +22,7 @@ describe('renderReplySuggestionsPrompt', () => {
     scene: '便利店',
   }
 
-  const output = renderReplySuggestionsPrompt(args)
+  const output = await renderReplySuggestionsPrompt(args)
 
   it('mentions all 3 candidate field names', () => {
     expect(output).toContain('meaningZh')
@@ -46,8 +46,8 @@ describe('renderReplySuggestionsPrompt', () => {
     expect(output).toMatch(/no prose/i)
   })
 
-  it('handles an empty context gracefully', () => {
-    const out = renderReplySuggestionsPrompt({ context: [], level: 'N4', scene: '通用' })
+  it('handles an empty context gracefully', async () => {
+    const out = await renderReplySuggestionsPrompt({ context: [], level: 'N4', scene: '通用' })
     expect(out).toContain('no prior turns')
     expect(out).toContain('N4')
     expect(out).toContain('通用')
