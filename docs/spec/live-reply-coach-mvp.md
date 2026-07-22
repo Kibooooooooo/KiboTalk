@@ -2,7 +2,7 @@
 
 - **状态**：技术方案草案
 - **标签**：product, mvp, architecture, react, electron, pwa
-- **关联**：[产品想法](./2026-07-16-live-reply-coach-language-assist.md)
+- **关联**：[产品想法](../brainstorm/2026-07-16-live-reply-coach-language-assist.md)
 - **作者**：路路（与神奈子需求对齐后整理）
 
 ## 摘要
@@ -648,7 +648,7 @@ Phase 1（加分）：apps/desktop（Electron，共用 packages）
 
 ## 相关
 
-- [产品想法原文](./2026-07-16-live-reply-coach-language-assist.md)
+- [产品想法原文](../brainstorm/2026-07-16-live-reply-coach-language-assist.md)
 - [AIRI 插件 UI 范围](../notes/2026-07-16-airi-plugin-ui.md)
 - 参考仓库：[airi](https://github.com/moeru-ai/airi) · [webai-realtime-voice-chat](https://github.com/proj-airi/webai-example-realtime-voice-chat) · [velin](https://github.com/moeru-ai/velin) · [vieval](https://github.com/vieval-dev/vieval) · [deepchat](https://github.com/thinkinaixyz/deepchat)
 - Speaker 本地：[tinyscribe](https://github.com/jakewvincent/tinyscribe) · [speaker-verification](https://github.com/jaehyun-ko/node-speaker-verification) · [Eagle Web](https://picovoice.ai/docs/quick-start/eagle-web/) · [wavlm-base-plus-sv](https://huggingface.co/Xenova/wavlm-base-plus-sv)

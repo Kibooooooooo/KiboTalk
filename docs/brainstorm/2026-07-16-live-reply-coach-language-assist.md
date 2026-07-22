@@ -195,7 +195,7 @@ AI 生成的是**起点**，不是定稿：
 
 ## 相关
 
-- **MVP 需求与技术选型**：[2026-07-20-live-reply-coach-mvp-tech-spec.md](./2026-07-20-live-reply-coach-mvp-tech-spec.md)
+- **MVP 需求与技术选型**：[live-reply-coach-mvp.md](../spec/live-reply-coach-mvp.md)
 - 对话参与：千坂神奈子、路路
 - 活动：AdventureX / United Portal
 - 相近产品：HaruSpeak、IKI AI
