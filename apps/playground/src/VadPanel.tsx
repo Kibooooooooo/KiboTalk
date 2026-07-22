@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createVAD, defaultVadConfig } from '@kibotalk/audio/vad'
 import type { VAD } from '@kibotalk/audio/vad'
-import { encodeWav } from '@kibotalk/audio'
+import { encodeWav, padBuffer } from '@kibotalk/audio'
+import { useSttProviders, sttUrl, defaultSttProvider, SttProviderSelect } from './SttProviderSelect'
 import {
   Badge,
   Button,
@@ -54,7 +55,8 @@ export default function VadPanel() {
   const [minSpeechDurationMs, setMinSpeechDurationMs] = useState(defaultVadConfig.minSpeechDurationMs)
   const [prePadMs, setPrePadMs] = useState(80)
   const [postPadMs, setPostPadMs] = useState(80)
-  const [autoTranscribe, setAutoTranscribe] = useState(true)
+  const [transcribeProvider, setTranscribeProvider] = useState<string | null>(null)
+  const providers = useSttProviders()
   const [transcribeMode, setTranscribeMode] = useState<TranscribeMode>('aggregated')
   const [vadVariantId, setVadVariantId] = useState<string>(SILERO_VARIANTS[0].id)
   const [mergeGapMs, setMergeGapMs] = useState(2000)
@@ -69,8 +71,8 @@ export default function VadPanel() {
   const mergedIdRef = useRef(0)
   const sampleRateRef = useRef(16000)
   const playCtxRef = useRef<AudioContext | null>(null)
-  const autoTranscribeRef = useRef(autoTranscribe)
-  autoTranscribeRef.current = autoTranscribe
+  const transcribeProviderRef = useRef(transcribeProvider)
+  transcribeProviderRef.current = transcribeProvider
   const transcribeModeRef = useRef(transcribeMode)
   transcribeModeRef.current = transcribeMode
   const mergeGapMsRef = useRef(mergeGapMs)
@@ -99,6 +101,12 @@ export default function VadPanel() {
       speechPadMs: 0,
     })
   }, [speechThreshold, exitThreshold, minSilenceDurationMs, minSpeechDurationMs])
+
+  // Default to the active provider once the list loads (only if the user
+  // hasn't picked one yet).
+  useEffect(() => {
+    setTranscribeProvider((prev) => prev ?? defaultSttProvider(providers))
+  }, [providers])
 
   // Stop playback when the panel unmounts.
   useEffect(() => {
@@ -130,7 +138,7 @@ export default function VadPanel() {
     const _wav = encodeWav(padded, sampleRateRef.current)
     const startedAt = performance.now()
     try {
-      const res = await fetch('/stt?provider=openai', { method: 'POST', body: _wav })
+      const res = await fetch(sttUrl(transcribeProviderRef.current), { method: 'POST', body: _wav })
       const json = (await res.json()) as { text?: string; error?: string }
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       const sttMs = Math.round(performance.now() - startedAt)
@@ -168,7 +176,7 @@ export default function VadPanel() {
     const id = ++mergedIdRef.current
     const duration = buffer.length / sampleRateRef.current
     setMergedSegments((prev) => [...prev, { id, duration, buffer, segmentIds: segIds }].slice(-20))
-    if (autoTranscribeRef.current) void transcribeMerged(id, buffer)
+    if (transcribeProviderRef.current !== null) void transcribeMerged(id, buffer)
   }
 
   async function transcribeMerged(id: number, buffer: Float32Array) {
@@ -176,7 +184,7 @@ export default function VadPanel() {
     const startedAt = performance.now()
     try {
       const wav = encodeWav(buffer, sampleRateRef.current)
-      const res = await fetch('/stt?provider=openai', { method: 'POST', body: wav })
+      const res = await fetch(sttUrl(transcribeProviderRef.current), { method: 'POST', body: wav })
       const json = (await res.json()) as { text?: string; error?: string }
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       const sttMs = Math.round(performance.now() - startedAt)
@@ -239,7 +247,7 @@ export default function VadPanel() {
         setSegments((prev) => [...prev, { id, duration: e.duration, buffer: e.buffer }].slice(-20))
         if (transcribeModeRef.current === 'aggregated') {
           currentMergeSegIdsRef.current.push(id)
-        } else if (autoTranscribeRef.current) {
+        } else if (transcribeProviderRef.current !== null) {
           void transcribeSegment(id, e.buffer)
         }
       })
@@ -296,15 +304,14 @@ export default function VadPanel() {
               <Button variant="destructive" onClick={stop}>停止检测</Button>
             )}
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={autoTranscribe}
-              onChange={(e) => setAutoTranscribe(e.target.checked)}
-              className="h-4 w-4"
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium">自动转写：</span>
+            <SttProviderSelect
+              providers={providers}
+              value={transcribeProvider}
+              onChange={setTranscribeProvider}
             />
-            <span>自动转写（本地 Qwen3-ASR，/stt?provider=openai）</span>
-          </label>
+          </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="font-medium">VAD 模型：</span>
             <select
@@ -494,7 +501,7 @@ export default function VadPanel() {
                           播放合并
                         </Button>
                       </div>
-                      {autoTranscribe && (
+                      {transcribeProvider !== null && (
                         <div className="ml-1 flex items-start gap-2">
                           <span className="flex-1">
                             {m.transcribing ? (
@@ -553,7 +560,7 @@ export default function VadPanel() {
                       播放
                     </Button>
                   </div>
-                  {autoTranscribe && (
+                  {transcribeProvider !== null && (
                     <div className="ml-6 flex items-start gap-2">
                       <span className="flex-1">
                         {s.transcribing ? (
@@ -622,15 +629,5 @@ function concatFloat32(chunks: Float32Array[]): Float32Array {
     out.set(c, off)
     off += c.length
   }
-  return out
-}
-
-/** Pad an audio buffer with leading/trailing silence (ASR preprocessing). */
-function padBuffer(buffer: Float32Array, preMs: number, postMs: number, sampleRate: number): Float32Array {
-  const pre = Math.round((preMs / 1000) * sampleRate)
-  const post = Math.round((postMs / 1000) * sampleRate)
-  if (pre <= 0 && post <= 0) return buffer
-  const out = new Float32Array(buffer.length + pre + post)
-  out.set(buffer, pre)
   return out
 }

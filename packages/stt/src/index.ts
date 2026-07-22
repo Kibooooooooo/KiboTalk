@@ -55,6 +55,43 @@ export function createSttClient(config: SttClientConfig): SttClient {
   };
 }
 
+/** Friendly labels for known provider ids (UI use; the id is the wire value). */
+const PROVIDER_LABELS: Record<string, string> = {
+  openrouter: "OpenRouter（云端）",
+  openai: "OpenAI 兼容（本地 Qwen3-ASR 等）",
+};
+
+export type SttProviderInfo = {
+  id: string;
+  label: string;
+  model: string;
+  active: boolean;
+  configured: boolean;
+};
+
+/**
+ * Enumerate registered STT providers and report which are fully configured in
+ * `env` (have BASE_URL + API_KEY + MODEL/default). Used by the proxy to tell
+ * the browser which providers it can offer. Keys are never included — only ids.
+ */
+export function listSttProviders(
+  env: Record<string, string | undefined>,
+): SttProviderInfo[] {
+  return Object.keys(adapters).map((id) => {
+    const prefix = `STT_${id.toUpperCase()}_`;
+    const baseUrl = env[`${prefix}BASE_URL`];
+    const apiKey = env[`${prefix}API_KEY`];
+    const model = env[`${prefix}MODEL`] ?? adapters[id].defaults?.model;
+    return {
+      id,
+      label: PROVIDER_LABELS[id] ?? id,
+      model: model ?? "",
+      active: env.STT_ACTIVE === id,
+      configured: Boolean(baseUrl && apiKey && model),
+    };
+  });
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";

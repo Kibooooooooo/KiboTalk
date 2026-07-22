@@ -44,3 +44,22 @@ function writeAscii(view: DataView, offset: number, text: string): void {
     view.setUint8(offset + i, text.charCodeAt(i));
   }
 }
+
+/**
+ * Pad an audio buffer with leading/trailing silence (ASR preprocessing).
+ * `preMs`/`postMs` are milliseconds of silence at the given `sampleRate`.
+ * Returns the input buffer unchanged when no padding is requested.
+ */
+export function padBuffer(
+  buffer: Float32Array,
+  preMs: number,
+  postMs: number,
+  sampleRate: number,
+): Float32Array {
+  const pre = Math.round((preMs / 1000) * sampleRate);
+  const post = Math.round((postMs / 1000) * sampleRate);
+  if (pre <= 0 && post <= 0) return buffer;
+  const out = new Float32Array(buffer.length + pre + post);
+  out.set(buffer, pre);
+  return out;
+}

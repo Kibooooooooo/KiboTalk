@@ -51,6 +51,7 @@ These are spec-named choices. **Do not rewrite or substitute them** with hand-ro
 - **VAD chunk size**: 512 samples (32 ms) per `processAudio` call (`packages/audio/src/vad.ts` `newBufferSize`). Silero v6.2 prepends 64-sample context → 576 input; v5 takes 512 raw. See `docs/solutions/silero-vad-v6-context-frame.md`.
 - **STT upload format**: WAV 16 kHz mono PCM via `encodeWav` (`packages/audio/src`). The `/stt` proxy forwards the WAV body as-is.
 - **Speaker embeddings**: computed in a Web Worker (`apps/playground/src/audio/speaker-worker.ts`), persisted in IndexedDB. Don't run the WASM model on the main thread.
+- **Segment aggregation** (`packages/audio/src/aggregator.ts`): sits between VAD (+ speaker verification) and `pipeline.ingestSegment`. Accumulates same-speaker VAD segments and flushes one merged turn when silence exceeds the speaker's pause threshold (`otherPauseMs`/`userPauseMs`), when accumulated audio exceeds `maxMs`, or on speaker change. Silence gaps between constituents are reconstructed from segment timing. This is where `vadOtherPauseMs`/`vadUserPauseMs` (spec §2.4) actually take effect — the pipeline itself fires LLM immediately per ingested turn and does NOT wait. The pipeline contract (one ingested segment = one turn) stays unchanged.
 
 ## Conventions
 
@@ -58,7 +59,7 @@ These are spec-named choices. **Do not rewrite or substitute them** with hand-ro
 - **Pure functions; no new classes** unless the framework/API requires it. Imports at top. TS unions: exhaustive `switch`.
 - **Full words.** No obscure abbreviations; only use ones common in software.
 - **Smallest correct diff.** Only change what was asked. No drive-by refactor, tests, or docs unless asked. When you touch code, small progressive refactors alongside the change are welcome.
-- **Reuse and extend** existing functions/modules; do not duplicate similar logic.
+- **Reuse and extend** existing functions/modules; do not duplicate similar logic. Before implementing a feature (a selector, a hook, a helper, a card), grep the repo for it first — chances are someone already wrote it. The moment you notice a second copy of something, extract it into a shared module/component and have both callers use it. Examples already in the repo: `SttProviderSelect` + `useSttProviders` + `sttUrl` (`apps/playground/src/SttProviderSelect.tsx`, used by both the VAD panel and the direct-API panel), `padBuffer` / `encodeWav` (`packages/audio`), `createSegmentAggregator` (`packages/audio/aggregator`).
 - **No backward-compatibility guards.** If a rename/breakage is needed, do it directly and update callers in the same change.
 - **Playground UI is Chinese** — labels, examples, and sample content in Chinese.
 - **Tailwind v4 + shadcn/ui** for all UI (playground included). Shared primitives in `packages/ui`. When you add/update a `packages/ui` component, keep this README's component list in sync.

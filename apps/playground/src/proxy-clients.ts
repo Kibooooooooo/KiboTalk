@@ -1,23 +1,34 @@
 import type { LlmClient, SttClient, CandidateStreamEvent } from '@kibotalk/pipeline'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
-import { encodeWav } from '@kibotalk/audio'
+import { encodeWav, padBuffer } from '@kibotalk/audio'
 import { parseSseStream } from './sse'
 import { extractCandidates } from './partial-json'
 
 /**
  * Pipeline STT client that talks to the /stt proxy. The proxy holds the
  * provider key; the browser just ships WAV. `pcm` is the VAD-cut segment at
- * `sampleRate` (16kHz mono).
+ * `sampleRate` (16kHz mono). Pre/post silence padding is applied here (ASR
+ * preprocessing) so VAD cuts can stay tight (speechPadMs = 0).
  */
 export class ProxySttClient implements SttClient {
+  private prePadMs = 0;
+  private postPadMs = 0;
+
   constructor(private sampleRate = 16000) {}
 
+  /** Live-tune ASR-level padding without restarting the session. */
+  configurePadding(prePadMs: number, postPadMs: number): void {
+    this.prePadMs = prePadMs;
+    this.postPadMs = postPadMs;
+  }
+
   async transcribe(pcm: Float32Array, signal: AbortSignal): Promise<string> {
-    const wav = encodeWav(pcm, this.sampleRate)
-    const res = await fetch('/stt', { method: 'POST', body: wav, signal })
-    const json = (await res.json().catch(() => ({}))) as { text?: string; error?: string }
-    if (!res.ok) throw new Error(json.error ?? `STT HTTP ${res.status}`)
-    return json.text ?? ''
+    const padded = padBuffer(pcm, this.prePadMs, this.postPadMs, this.sampleRate);
+    const wav = encodeWav(padded, this.sampleRate);
+    const res = await fetch('/stt', { method: 'POST', body: wav, signal });
+    const json = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+    if (!res.ok) throw new Error(json.error ?? `STT HTTP ${res.status}`);
+    return json.text ?? '';
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createSttClient, sttConfigFromEnv } from "../src/index";
+import { createSttClient, sttConfigFromEnv, listSttProviders } from "../src/index";
 
 function mockResponse(text: string, ok = true): Response {
   return {
@@ -246,5 +246,24 @@ describe("sttConfigFromEnv", () => {
     expect(() =>
       sttConfigFromEnv({ STT_ACTIVE: "openrouter" }, "nope"),
     ).toThrow(/unknown stt provider/i);
+  });
+});
+
+describe("listSttProviders", () => {
+  it("reports configured/active per registered provider, falling back to default model", () => {
+    const providers = listSttProviders({
+      STT_ACTIVE: "openai",
+      STT_OPENAI_BASE_URL: "http://localhost:8765/v1",
+      STT_OPENAI_API_KEY: "local-key",
+      // STT_OPENAI_MODEL omitted → falls back to the adapter default
+      STT_OPENROUTER_BASE_URL: "https://cloud.example",
+      // STT_OPENROUTER_API_KEY omitted → not configured
+    });
+    const byId = Object.fromEntries(providers.map((p) => [p.id, p]));
+    expect(byId.openai.configured).toBe(true);
+    expect(byId.openai.active).toBe(true);
+    expect(byId.openai.model).toBe("Qwen/Qwen3-ASR-1.7B"); // adapter default
+    expect(byId.openrouter.configured).toBe(false);
+    expect(byId.openrouter.active).toBe(false);
   });
 });

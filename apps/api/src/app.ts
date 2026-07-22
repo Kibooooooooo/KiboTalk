@@ -1,12 +1,20 @@
 import { Hono } from 'hono'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { streamSSE } from 'hono/streaming'
-import { createSttClient, sttConfigFromEnv } from '@kibotalk/stt'
+import { createSttClient, sttConfigFromEnv, listSttProviders } from '@kibotalk/stt'
 import { createLlmClient, llmConfigFromEnv } from '@kibotalk/llm'
 import { renderReplySuggestionsPrompt } from '@kibotalk/prompts'
 import type { ConversationTurn } from '@kibotalk/conversation'
 
 export const app = new Hono()
+
+// GET /stt/providers — list STT providers fully configured in server env (no
+// keys), so the browser can offer a provider selector. Each entry carries
+// `active` (matches STT_ACTIVE) so the client can default to it.
+app.get('/stt/providers', (c) => {
+  const providers = listSttProviders(process.env).filter((p) => p.configured)
+  return c.json({ providers })
+})
 
 // POST /stt — receive a WAV (16kHz mono), forward to an STT provider, return
 // { text }. Provider is STT_ACTIVE by default; an optional ?provider= query

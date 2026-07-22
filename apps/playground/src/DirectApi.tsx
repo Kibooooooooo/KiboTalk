@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { encodeWav } from '@kibotalk/audio'
 import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import {
@@ -16,6 +16,7 @@ import {
 import { extractCandidates } from './partial-json'
 import { parseSseStream } from './sse'
 import { AudioSource } from './audio/audio-source'
+import { useSttProviders, sttUrl, defaultSttProvider, SttProviderSelect } from './SttProviderSelect'
 
 type CandidateState = ReplyCandidate[]
 
@@ -40,7 +41,12 @@ export default function DirectApi() {
 }
 
 function SttPanel() {
-  const [provider, setProvider] = useState<'cloud' | 'local'>('cloud')
+  const providers = useSttProviders()
+  const [provider, setProvider] = useState<string | null>(null)
+  // Default to the active provider once the list loads.
+  useEffect(() => {
+    setProvider((prev) => prev ?? defaultSttProvider(providers))
+  }, [providers])
   const [transcription, setTranscription] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -55,10 +61,8 @@ function SttPanel() {
     try {
       // Always via the /stt proxy (keys stay server-side). ?provider= overrides
       // the active provider per request; the server resolves base URL / key /
-      // model from its own env. 'local' = the openai-compatible provider, which
-      // defaults to a local mlx-qwen3-asr server (see ADR 0002).
-      const url = provider === 'local' ? '/stt?provider=openai' : '/stt'
-      const res = await fetch(url, { method: 'POST', body: wav })
+      // model from its own env. See ADR 0002.
+      const res = await fetch(sttUrl(provider), { method: 'POST', body: wav })
       const json = (await res.json()) as { text?: string; error?: string }
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
       setTranscription(json.text ?? '')
@@ -114,20 +118,18 @@ function SttPanel() {
       <CardContent className="space-y-3">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
-            <Label htmlFor="stt-provider">STT 来源</Label>
-            <select
-              id="stt-provider"
+            <span className="font-medium text-sm">STT 来源：</span>
+            <SttProviderSelect
+              providers={providers}
               value={provider}
-              onChange={(e) => setProvider(e.target.value as 'cloud' | 'local')}
-              className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
-            >
-              <option value="cloud">云端代理（/stt，藏 key）</option>
-              <option value="local">本地 Qwen3-ASR（经代理）</option>
-            </select>
+              onChange={setProvider}
+              allowOff={false}
+              offLabel=""
+            />
           </div>
         </div>
 
-        {provider === 'local' && (
+        {provider === 'openai' && (
           <p className="text-xs text-muted-foreground">
             本地模式：服务端需在 <code>.env</code> 配置 <code>STT_OPENAI_*</code>（指向本机
             <code>mlx-qwen3-asr serve</code>，默认 :8765）并运行 <code>pnpm dev:api</code>。
