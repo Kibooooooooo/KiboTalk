@@ -74,7 +74,7 @@ Onboarding（目标语 / 水平 / 场景 / 声纹录制）
 | TTS / AI 代说 | 产品定位是用户自己开口 |
 | iPhone 通话监听 | Web / PWA 做不到 |
 | 登录账号 | 本地会话即可 |
-| 离线 ASR + LLM | 走在线 API |
+| 离线 LLM | LLM 走在线 API。本地 ASR 可选（低延迟，见 §2.9 本地 STT） |
 
 ### 1.4 数据模型
 
@@ -131,7 +131,7 @@ type ReplyCandidate = {
 | 语音 Pipeline | `packages/pipeline` | [webai-example-realtime-voice-chat](https://github.com/proj-airi/webai-example-realtime-voice-chat)（VAD + STT，无 TTS） |
 | 提示词 | **Velin** `@velin-dev/core-react`（TSX） | [moeru-ai/velin](https://github.com/moeru-ai/velin) |
 | LLM | **xsai** | AIRI 生态 |
-| STT | 走代理（OpenRouter：`openai/gpt-4o-transcribe` 默认，`groq/whisper-large-v3-turbo` fallback） | 见 §2.9 |
+| STT | 走代理（OpenRouter：`openai/gpt-4o-transcribe` 默认，`groq/whisper-large-v3-turbo` fallback）；本地可选（mlx-qwen3-asr） | 见 §2.9 |
 | 服务端 | **Hono** 薄代理（转发 LLM + STT，藏 key，streaming） | — |
 | 部署 | **Railway** 常驻进程（无超时，git push 部署） | — |
 | Prompt 评估 | **vieval**（根目录 config + `evals/`） | [vieval-dev/vieval](https://github.com/vieval-dev/vieval) |
@@ -270,10 +270,11 @@ if user  → 结束，等待下一轮
 
 **配置**：
 
-```bash
-VAD_OTHER_PAUSE_MS=1000   # other 停说多久算"说完"，触发 LLM；playground 实测调
-VAD_USER_PAUSE_MS=1000    # user 停说多久算"说完"，append turn（默认与 other 同值）
-```
+VAD 停顿阈值与说话人判定阈值为**频繁调试参数**，在 playground 前端「调试参数」面板实时可调（`vad.updateConfig()` / `verifier.setThreshold()`），无需改 env 或重启会话；默认值在 `packages/pipeline` 的 `defaultConfig`：
+
+- `VAD_OTHER_PAUSE_MS`（other 停说多久算"说完"→ 触发 LLM）：默认 1000
+- `VAD_USER_PAUSE_MS`（user 停说多久算"说完"→ append turn）：默认与 other 同值
+- 说话人判定 `threshold`：默认见 `packages/speaker`
 
 便利店快节奏可能 700ms 更合适，会议场景可能 1.5s——先 1s 跑起来，playground 阶段按场景调。
 
@@ -538,6 +539,18 @@ STT_OPENROUTER_MODEL=openai/gpt-4o-transcribe   # fallback: groq/whisper-large-v
 用户不自带 key（已定"走我们中转"），所以 DB 只存"用哪个 provider/model"的选择，不存 key 本身。
 
 **STT provider 选型结论**：本地 VAD 切段后 batch 发送（非连续 streaming），故 Deepgram 的 streaming 优势用不上；按"日语准确率 + 成本"选，默认 `openai/gpt-4o-transcribe`，`groq/whisper-large-v3-turbo` 作 cost-fallback。LLM 具体用哪个模型留到 playground 跑出候选质量再定，env 方案 B 让切换零成本。
+
+**本地 STT（可选，低延迟）**：除云端代理外，`packages/stt` 另注册 `openai` provider——标准 OpenAI 兼容 multipart `/v1/audio/transcriptions`，默认指向本机 [`mlx-qwen3-asr`](https://github.com/moona3k/mlx-qwen3-asr)（`serve` 模式，Apple Silicon / MLX，Qwen3-ASR-1.7B，日语 FLEURS 3.6% 错误率）。该服务是本机独立进程，**不纳入本仓库**；浏览器在 playground 选 `local` 时**直连** `http://localhost:8765/v1`，绕过 `apps/api`（本地无 key 顾虑，与 ADR-0001 一致）。云端仍是默认。详见 [ADR 0002](./adr/0002-local-stt-mlx-qwen3-asr.md)。
+
+```bash
+# 本地 Qwen3-ASR（仅 Apple Silicon）
+pip install "mlx-qwen3-asr[serve]"
+mlx-qwen3-asr serve --api-key $(openssl rand -hex 16)   # localhost:8765
+STT_ACTIVE=openai
+STT_OPENAI_BASE_URL=http://localhost:8765/v1
+STT_OPENAI_API_KEY=本地 serve 启动时生成的 key
+STT_OPENAI_MODEL=Qwen/Qwen3-ASR-1.7B   # 想更快切 Qwen/Qwen3-ASR-0.6B
+```
 
 ---
 
