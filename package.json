@@ -7,13 +7,20 @@
     "dev:api": "pnpm -F @kibotalk/api dev",
     "dev:web": "pnpm -F @kibotalk/web dev",
     "dev:playground": "pnpm -F @kibotalk/playground dev",
+    "eval": "vieval run --config ./vieval.config.ts --report-out .vieval/reports --workspace local --experiment multi-turn-ruby --attempt attempt-a",
+    "eval:report": "vieval report analyze .vieval/reports --format json",
     "test": "turbo test",
     "typecheck": "turbo typecheck"
   },
   "packageManager": "pnpm@10.33.0",
   "devDependencies": {
+    "@kibotalk/conversation": "workspace:*",
+    "@kibotalk/prompts": "workspace:*",
+    "@types/node": "^22.20.1",
+    "@xsai/generate-text": "0.4.4",
     "turbo": "^2.5.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vieval": "0.0.12"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

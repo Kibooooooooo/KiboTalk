@@ -7,3 +7,4 @@ coverage
 .env
 .env.local
 .spec-issue-body.md
+.vieval
