@@ -85,7 +85,9 @@ export function extractCandidates(buffer: string): ReplyCandidate[] {
         id: typeof o.id === 'string' ? o.id : `c${i}`,
         meaningZh: typeof o.meaningZh === 'string' ? o.meaningZh : '',
         targetText: typeof o.targetText === 'string' ? o.targetText : '',
-        reading: typeof o.reading === 'string' ? o.reading : '',
+      }
+      if (typeof o.reading === 'string' && o.reading.length > 0) {
+        candidate.reading = o.reading
       }
       const segments = parseSegments(o.segments)
       if (segments) candidate.segments = segments

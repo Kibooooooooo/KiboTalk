@@ -172,17 +172,19 @@ export default function LiveSession() {
             setTurns((prev) => [...prev, e.turn as TurnView])
             break
           case 'candidatesDone':
-            setLatestCandidates(e.candidates)
-            setTurns((prev) => prev.map((t) => (t.id === e.turnId ? { ...t, candidates: e.candidates } : t)))
+            if (e.candidates.length === 3) {
+              setLatestCandidates(e.candidates)
+            }
+            setTurns((prev) =>
+              prev.map((t) => (t.id === e.turnId ? { ...t, candidates: e.candidates } : t)),
+            )
             break
           case 'llmAborted':
-            setLatestCandidates(null)
+          case 'llmFailed':
+            // Keep previous committed cards (spec §1.4).
             break
           case 'sttFailed':
             setTurns((prev) => prev.map((t) => (t.id === e.turnId ? { ...t, sttFailed: true } as TurnView : t)))
-            break
-          case 'llmFailed':
-            setLatestCandidates(null)
             break
           default:
             break

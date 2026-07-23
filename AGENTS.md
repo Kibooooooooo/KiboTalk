@@ -5,14 +5,18 @@ Guidance for AI coding agents working in this repo. Read before making changes.
 ## What this is
 
 KiboTalk — "Live Reply Coach" MVP: a live foreign-language conversation coach.
-Speaker verification splits user vs counterpart; only when the counterpart
-finishes a turn do we generate reply suggestions. The user's own utterances
-also enter the same conversation stream and shape the next suggestion.
+Speaker verification splits user vs counterpart; after **either** speaker's
+turn is ingested we always request reply suggestions. The LLM returns exactly
+3 candidates or `[]` (skip). Empty / failed / in-flight keeps the previous
+committed cards. User mid-utterance stalls (after pause) get full-sentence
+completions; other turns almost always get 3. Same card schema for both.
 
 Authoritative spec: `docs/spec/live-reply-coach-mvp.md`. ADRs in
 `docs/adr/`. Past fixes & known pitfalls in `docs/solutions/` (read the
-relevant one before touching a documented area). When implementation and spec
-diverge, align per spec or update the spec — don't silently drift.
+relevant one before touching a documented area). Prompt / schema vieval
+benchmark reports in `docs/prompt-evals/` (read the latest before changing
+reply prompts). When implementation and spec diverge, align per spec or
+update the spec — don't silently drift.
 
 ## Architecture
 
@@ -22,13 +26,15 @@ Client orchestration + thin proxy (ADR 0001). The browser runs the pipeline;
 ```
 apps/
   api/        Hono proxy: /stt, /llm (SSE). Keys live server-side only.
-  playground/ Vite + React dev panel (Chinese UI) for testing each layer.
+  playground/ Vite + React dev panel (Chinese UI) for testing each layer
+              (声纹页 covers enrollment + free-speech verify / threshold tuning).
   web/        PWA shell (not yet built).
 packages/
   audio/      VAD state machine + encodeWav. Silero via transformers.js.
   llm/        LLM client (xsai).
   prompts/    Reply-suggestion prompts (Velin TSX → markdown).
-  speaker/    Speaker verification (wavlm-base-plus-sv, WASM + IndexedDB).
+  speaker/    Speaker verification (wavlm-base-plus-sv, WASM + IndexedDB);
+              `verify` returns raw `similarity` plus label `confidence`.
   stt/        Provider-agnostic STT client factory + adapters.
   pipeline/   Conversation store + turn state machine.
   ui/         shadcn/ui primitives on Tailwind v4 (shared).
@@ -75,9 +81,21 @@ pnpm dev:web          # PWA shell
 pnpm build            # turbo build (all)
 pnpm test             # turbo test (vitest per package)
 pnpm typecheck        # turbo typecheck
+pnpm eval             # vieval reply-prompt ablation → .vieval/reports/ (gitignored)
+pnpm eval:report      # analyze report tree
 ```
 
 Per-package: `pnpm --filter @kibotalk/<pkg> <script>` (e.g. `pnpm --filter @kibotalk/playground exec tsc --noEmit`).
+
+## Prompt / LLM benchmarks (vieval)
+
+- Harness: root `vieval.config.ts`, cases in `evals/`, variants in `evals/lib/variants.ts`.
+- Machine artifacts land under `.vieval/reports/` (gitignored). They are **not** a substitute for a written report.
+- **After every benchmark run** (`pnpm eval` or any vieval experiment on prompts/schema), add or update a human report under `docs/prompt-evals/` following `docs/prompt-evals/README.md`:
+  - how each tested prompt/schema variant was designed;
+  - metrics tables and outcomes;
+  - conclusions / what (not) to ship to production.
+- Do not change production prompts in `packages/prompts` based only on chat summaries — cite the report (and preferably the run id under `.vieval/reports/`).
 
 ## Testing & debugging practices
 
@@ -86,6 +104,7 @@ Per-package: `pnpm --filter @kibotalk/<pkg> <script>` (e.g. `pnpm --filter @kibo
 - Prefer runtime evidence (logs, reproduction) over code-only reasoning when debugging. Don't "fix" with 100% confidence from reading code alone — confirm with a run.
 - When debugging, instrument with logs, reproduce, analyze, then fix; remove instrumentation only after a post-fix run proves success.
 - Known pitfalls and past fixes live in `docs/solutions/` (one file per issue, YAML frontmatter: `module`/`tags`/`problem_type`). Read the relevant solution before touching a documented area; add a new solution when you solve a non-obvious bug.
+- Prompt eval history: `docs/prompt-evals/` (see above).
 
 ## Before finishing a change
 

@@ -126,27 +126,31 @@ describe('Pipeline state machine — spec §2.4 rules 1–8', () => {
     expect(turns![0].suggestions).toBeUndefined()
   })
 
-  it('rule 5: user抢说 — interrupted other segment appended, no LLM; then user segment appended, no LLM', async () => {
+  it('rule 5: user抢说 — interrupted other appended (no LLM); user segment triggers LLM', async () => {
     const stt = new MockStt(['other-partial', 'user-actual'])
-    const llm = new MockLlm([])
+    const llm = new MockLlm([
+      [{ type: 'candidate-done', index: 0, candidate: { id: 'c0', meaningZh: '续', targetText: 'つづき', reading: 'tsuzuki' } }, { type: 'done' }],
+    ])
     const conversation = new InMemoryConversationStorage()
     const pipeline = new Pipeline({ stt, llm, conversation, sleep: noSleep })
     const events = recordEvents(pipeline, ['candidatesStreaming', 'candidatesDone', 'turnAppended'])
 
     await pipeline.ingestSegment(seg('other', 1000, 1500, true))
     await pipeline.ingestSegment(seg('user', 1500, 2500))
+    await pipeline.idle()
 
-    expect(llm.callCount).toBe(0)
-    expect(events.every((e) => e.type !== 'candidatesStreaming' && e.type !== 'candidatesDone')).toBe(true)
+    expect(llm.callCount).toBe(1)
+    expect(events.some((e) => e.type === 'candidatesDone')).toBe(true)
     const turns = await conversation.loadActiveSession()
     expect(turns!.map((t) => t.speaker)).toEqual(['other', 'user'])
     expect(turns!.map((t) => t.text)).toEqual(['other-partial', 'user-actual'])
   })
 
-  it('rule 5 (alt): user抢说 during LLM_STREAMING aborts LLM and appends user turn, no new LLM', async () => {
+  it('rule 5 (alt): user抢说 during LLM_STREAMING aborts LLM then user turn triggers new LLM', async () => {
     const stt = new MockStt(['other', 'user抢说'])
     const llm = new MockLlm([
       [{ type: 'candidate-start', index: 0 }, candidate(0, 'partial', 'p', 'p'), { gate: 'block' }],
+      [{ type: 'candidate-done', index: 0, candidate: { id: 'c0', meaningZh: 'user', targetText: 'u', reading: 'u' } }, { type: 'done' }],
     ])
     const conversation = new InMemoryConversationStorage()
     const pipeline = new Pipeline({ stt, llm, conversation, sleep: noSleep })
@@ -155,26 +159,33 @@ describe('Pipeline state machine — spec §2.4 rules 1–8', () => {
     await pipeline.ingestSegment(seg('other', 1000))
     await llm.gateEntered('block')
     await pipeline.ingestSegment(seg('user', 3000))
+    await pipeline.idle()
     llm.resolveGate('block')
 
     expect(events.some((e) => e.type === 'llmAborted')).toBe(true)
-    expect(events.every((e) => e.type !== 'candidatesDone')).toBe(true)
-    expect(llm.callCount).toBe(1)
+    expect(llm.callCount).toBe(2)
+    const done = events.filter((e) => e.type === 'candidatesDone')
+    expect(done).toHaveLength(1)
     const turns = await conversation.loadActiveSession()
     expect(turns!.map((t) => t.speaker)).toEqual(['other', 'user'])
   })
 
-  it('rule 6: STT failure retries once then appends sttFailed turn; session continues', async () => {
+  it('rule 6: STT failure retries once then appends sttFailed turn and still triggers LLM', async () => {
     const stt = new MockStt([new Error('stt down'), new Error('stt down again')])
-    const llm = new MockLlm([])
+    const llm = new MockLlm([
+      [{ type: 'done' }], // model may return []
+    ])
     const conversation = new InMemoryConversationStorage()
     const pipeline = new Pipeline({ stt, llm, conversation, sleep: noSleep })
-    const events = recordEvents(pipeline, ['sttFailed', 'turnAppended'])
+    const events = recordEvents(pipeline, ['sttFailed', 'turnAppended', 'candidatesDone'])
 
     await pipeline.ingestSegment(seg('other', 1000))
+    await pipeline.idle()
 
     expect(stt.callCount).toBe(2)
     expect(events.some((e) => e.type === 'sttFailed')).toBe(true)
+    expect(llm.callCount).toBe(1)
+    expect(events.some((e) => e.type === 'candidatesDone')).toBe(true)
     const turns = await conversation.loadActiveSession()
     expect(turns).toHaveLength(1)
     expect(turns![0].sttFailed).toBe(true)
@@ -184,7 +195,7 @@ describe('Pipeline state machine — spec §2.4 rules 1–8', () => {
     llm.scripts.push([{ type: 'candidate-done', index: 0, candidate: { id: 'c0', meaningZh: 'r', targetText: 'r', reading: 'r' } }, { type: 'done' }])
     await pipeline.ingestSegment(seg('other', 3000))
     await pipeline.idle()
-    expect(llm.callCount).toBe(1)
+    expect(llm.callCount).toBe(2)
   })
 
   it('rule 6: STT recovers on retry — no sttFailed, LLM proceeds', async () => {
@@ -246,19 +257,39 @@ describe('Pipeline state machine — spec §2.4 rules 1–8', () => {
     expect(events.some((e) => e.type === 'candidatesDone')).toBe(true)
   })
 
-  it('user segment never triggers LLM', async () => {
+  it('user segment triggers LLM (same as other)', async () => {
     const stt = new MockStt(['user said this'])
-    const llm = new MockLlm([])
+    const llm = new MockLlm([
+      [{ type: 'candidate-done', index: 0, candidate: { id: 'c0', meaningZh: '续写', targetText: 'つづき', reading: 'tsuzuki' } }, { type: 'done' }],
+    ])
     const conversation = new InMemoryConversationStorage()
     const pipeline = new Pipeline({ stt, llm, conversation, sleep: noSleep })
+    const events = recordEvents(pipeline, ['candidatesDone'])
 
     await pipeline.ingestSegment(seg('user', 1000))
+    await pipeline.idle()
 
-    expect(llm.callCount).toBe(0)
+    expect(llm.callCount).toBe(1)
+    expect(events.some((e) => e.type === 'candidatesDone')).toBe(true)
     const turns = await conversation.loadActiveSession()
     expect(turns).toHaveLength(1)
     expect(turns![0].speaker).toBe('user')
     expect(pipeline.getState()).toBe('IDLE')
+  })
+
+  it('empty LLM result still emits candidatesDone with []', async () => {
+    const stt = new MockStt(['わかりました'])
+    const llm = new MockLlm([[{ type: 'done' }]])
+    const conversation = new InMemoryConversationStorage()
+    const pipeline = new Pipeline({ stt, llm, conversation, sleep: noSleep })
+    const events = recordEvents(pipeline, ['candidatesDone'])
+
+    await pipeline.ingestSegment(seg('user', 1000))
+    await pipeline.idle()
+
+    const done = events.find((e) => e.type === 'candidatesDone')
+    expect(done).toBeDefined()
+    if (done?.type === 'candidatesDone') expect(done.candidates).toHaveLength(0)
   })
 
   it('config: pause thresholds accepted from injected config', async () => {

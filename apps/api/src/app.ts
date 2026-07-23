@@ -3,7 +3,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { streamSSE } from 'hono/streaming'
 import { createSttClient, sttConfigFromEnv, listSttProviders } from '@kibotalk/stt'
 import { createLlmClient, llmConfigFromEnv } from '@kibotalk/llm'
-import { renderReplySuggestionsPrompt } from '@kibotalk/prompts'
+import { buildReplySuggestionsMessages } from '@kibotalk/prompts'
 import type { ConversationTurn } from '@kibotalk/conversation'
 
 export const app = new Hono()
@@ -50,10 +50,13 @@ app.post('/llm', (c) =>
       context?: ConversationTurn[]
       level?: string
     } | null
-    const prompt = await renderReplySuggestionsPrompt({
+    const messages = await buildReplySuggestionsMessages({
       context: body?.context ?? [],
       level: body?.level ?? 'N5',
     })
+    const prompt = messages
+      .map((m) => `${m.role.toUpperCase()}:\n${m.content}`)
+      .join('\n\n')
     await stream.writeSSE({ event: 'prompt', data: prompt })
     let llmClient
     try {
@@ -64,7 +67,7 @@ app.post('/llm', (c) =>
     }
     try {
       const tokenStream = llmClient.streamChat({
-        messages: [{ role: 'user', content: prompt }],
+        messages,
         signal,
       })
       for await (const token of tokenStream) {

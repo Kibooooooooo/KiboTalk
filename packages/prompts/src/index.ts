@@ -1,19 +1,42 @@
 import { renderComponent } from '@velin-dev/core-react'
 
-import { ReplySuggestionsPrompt } from './reply-suggestions'
-import type { ReplySuggestionsPromptArgs } from './reply-suggestions'
+import {
+  REPLY_SUGGESTIONS_SYSTEM,
+  ReplySuggestionsUserPrompt,
+} from './reply-suggestions'
+import type {
+  ReplySuggestionsChatMessage,
+  ReplySuggestionsPromptArgs,
+} from './reply-suggestions'
 
-export type { ReplySuggestionsPromptArgs } from './reply-suggestions'
+export type {
+  ReplySuggestionsChatMessage,
+  ReplySuggestionsPromptArgs,
+} from './reply-suggestions'
+export { REPLY_SUGGESTIONS_SYSTEM, ReplySuggestionsUserPrompt } from './reply-suggestions'
 
 /**
- * Render the reply-suggestions prompt to a single string via Velin.
- *
- * Velin renders the TSX component to static markup and converts it to markdown
- * (see `@velin-dev/core-react`). The returned string is used as the user-message
- * body sent to the LLM. Async because Velin's markdown conversion is async.
+ * Build system + user messages for the reply-suggestions coach
+ * (production: system_split + ruby_kanji_no_phrase).
+ */
+export async function buildReplySuggestionsMessages(
+  args: ReplySuggestionsPromptArgs,
+): Promise<ReplySuggestionsChatMessage[]> {
+  const user = await renderComponent(ReplySuggestionsUserPrompt, args)
+  return [
+    { role: 'system', content: REPLY_SUGGESTIONS_SYSTEM },
+    { role: 'user', content: user },
+  ]
+}
+
+/**
+ * Render messages as a single debug string (SSE `prompt` event / playground).
  */
 export async function renderReplySuggestionsPrompt(
   args: ReplySuggestionsPromptArgs,
 ): Promise<string> {
-  return renderComponent(ReplySuggestionsPrompt, args)
+  const messages = await buildReplySuggestionsMessages(args)
+  return messages
+    .map((m) => `${m.role.toUpperCase()}:\n${m.content}`)
+    .join('\n\n')
 }

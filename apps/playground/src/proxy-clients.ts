@@ -39,9 +39,8 @@ export class ProxySttClient implements SttClient {
 /**
  * Pipeline LLM client that talks to the /llm SSE proxy. The proxy renders the
  * reply-suggestions prompt and streams raw LLM JSON tokens; here we incrementally
- * parse the 3-candidate JSON array and map each completed candidate onto the
- * pipeline's CandidateStreamEvent (start → field deltas → done). Candidates
- * appear one-by-one as their objects complete in the stream.
+ * parse the candidate JSON array (exactly 3 objects, or []) and map each completed
+ * candidate onto the pipeline's CandidateStreamEvent.
  */
 export class ProxyLlmClient implements LlmClient {
   constructor(private level = 'N5') {}
@@ -78,7 +77,9 @@ export class ProxyLlmClient implements LlmClient {
         yield { type: 'candidate-start', index }
         yield { type: 'candidate-delta', index, field: 'meaningZh', delta: c.meaningZh }
         yield { type: 'candidate-delta', index, field: 'targetText', delta: c.targetText }
-        yield { type: 'candidate-delta', index, field: 'reading', delta: c.reading }
+        if (c.reading) {
+          yield { type: 'candidate-delta', index, field: 'reading', delta: c.reading }
+        }
         yield { type: 'candidate-done', index, candidate: c }
         emitted++
       }

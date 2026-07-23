@@ -151,7 +151,10 @@ describe('T3 — real /llm SSE through proxy', () => {
     }
     expect(sent.model).toBe(ENV.LLM_OPENROUTER_MODEL)
     expect(sent.stream).toBe(true)
-    expect(sent.messages[0].content).toContain('N5')
+    expect(sent.messages).toHaveLength(2)
+    expect(sent.messages[0]?.role).toBe('system')
+    expect(sent.messages[1]?.role).toBe('user')
+    expect(sent.messages[1]?.content).toContain('N5')
   })
 
   it('never leaks the env API key in the SSE response body or headers', async () => {

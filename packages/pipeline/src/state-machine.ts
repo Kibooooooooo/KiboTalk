@@ -17,14 +17,16 @@ const defaultGenerateId = (): string =>
  * The conversation pipeline state machine (spec §2.4 rules 1–8).
  *
  * Concurrency model: `ingestSegment` awaits STT + turn append, then — for a
- * non-interrupted other turn — starts the LLM stream as a DETACHED task and
- * resolves. A subsequent segment aborts any in-flight LLM (AbortController),
- * discards its partial candidates, and proceeds. Ownership tracking prevents
- * a superseded LLM task from mutating shared state when it finally returns.
+ * non-interrupted turn (user or other) — starts the LLM stream as a DETACHED
+ * task and resolves. A subsequent segment aborts any in-flight LLM
+ * (AbortController), discards its partial candidates, and proceeds. Ownership
+ * tracking prevents a superseded LLM task from mutating shared state when it
+ * finally returns.
  *
  * Invariants:
  * - Every segment is appended as a turn (other's words are never lost).
- * - LLM is triggered only after a non-interrupted other turn append.
+ * - LLM is triggered after any non-interrupted turn append (including
+ *   sttFailed turns — model may return []).
  * - STT/LLM each retry once on failure (1s backoff), then surface a
  *   user-visible state without killing the session.
  * - Partial candidates never enter the next LLM's context — context is the
@@ -110,11 +112,9 @@ export class Pipeline {
 
     if (sttFailed) {
       this.emit({ type: 'sttFailed', turnId })
-      this.setState('IDLE')
-      return
     }
 
-    if (segment.speaker === 'other' && !segment.interrupted) {
+    if (!segment.interrupted) {
       // Detached: resolves on its own; a newer segment may abort it mid-stream.
       void this.runLlm(turnId).catch(() => {
         // runLlm handles its own failures; this swallows unexpected rejections

@@ -7,16 +7,16 @@ import { envNumber } from './env'
  * Segments arrive pre-cut by VAD + speaker (pipeline does no VAD/speaker
  * itself). OTHER_SPEAKING / USER_SPEAKING mean "STT is in flight for that
  * speaker, the turn has not been appended yet". LLM_STREAMING means candidates
- * are streaming for the most recent other turn.
+ * are streaming for the most recent turn (user or other).
  */
 export type PipelineState = 'IDLE' | 'OTHER_SPEAKING' | 'USER_SPEAKING' | 'LLM_STREAMING'
 
 /**
  * A VAD-cut, speaker-labeled audio segment. `interrupted` is set by the VAD
  * when the segment was cut short because a new voice started (as opposed to a
- * pause ≥ threshold). An interrupted `other` segment is still appended (the
- * other person's words are not lost) but does NOT trigger LLM — the
- * interrupting segment follows immediately (spec §2.4 rule 5, user抢说).
+ * pause ≥ threshold). An interrupted segment is still appended but does NOT
+ * trigger LLM — the interrupting segment follows and requests coach (spec
+ * §2.4 rule 5).
  */
 export type Segment = {
   pcm: Float32Array
@@ -39,7 +39,7 @@ export type CandidateStreamEvent =
   | { type: 'candidate-done'; index: number; candidate: ReplyCandidate }
   | { type: 'done' }
 
-/** LLM client — streams 3 candidates for an other turn. No internal retry. */
+/** LLM client — streams 3 candidates or []. No internal retry. */
 export interface LlmClient {
   streamCandidates(
     context: ConversationTurn[],

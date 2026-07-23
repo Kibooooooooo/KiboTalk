@@ -14,8 +14,12 @@ export type ReplyCandidate = {
   id: string
   meaningZh: string
   targetText: string
-  reading: string
-  /** Tokenized targetText; when absent, UI falls back to plain targetText + reading. */
+  /**
+   * @deprecated Phrase-level kana fallback. Prefer `segments[].reading` on kanji
+   * only. Optional for backward compatibility with older streams.
+   */
+  reading?: string
+  /** Tokenized targetText; when absent, UI shows plain targetText. */
   segments?: ReplySegment[]
 }
 

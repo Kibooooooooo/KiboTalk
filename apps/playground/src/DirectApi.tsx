@@ -204,7 +204,9 @@ function SttPanel() {
 
 function LlmPanel() {
   const [level, setLevel] = useState('N5')
-  const [contextText, setContextText] = useState('other: 你好，欢迎光临！\nuser: （我想说）我只是随便看看')
+  const [contextText, setContextText] = useState(
+    'other: 本日はお忙しい中お越しいただきありがとうございます。まずは簡単に自己紹介をお願いします。\nuser: 〇〇大学で情報工学を専攻しております、田中と申します。\nother: では、数ある企業の中で、なぜ弊社を志望されたのでしょうか。',
+  )
   const [candidates, setCandidates] = useState<CandidateState>([])
   const [raw, setRaw] = useState('')
   const [prompt, setPrompt] = useState('')

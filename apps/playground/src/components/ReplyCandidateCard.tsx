@@ -26,7 +26,7 @@ export type ReplyCandidateCardProps = {
 
 /**
  * Renders a reply candidate: ruby over kanji, particle highlight, Chinese below.
- * Falls back to plain targetText / reading when segments are missing.
+ * Falls back to plain targetText when segments are missing (optional legacy reading).
  */
 export function ReplyCandidateCard({ candidate, compact = false, className }: ReplyCandidateCardProps) {
   const { meaningZh, targetText, reading, segments } = candidate
