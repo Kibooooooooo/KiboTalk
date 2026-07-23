@@ -4,7 +4,6 @@ import type { ConversationTurn } from '@kibotalk/conversation'
 export type ReplySuggestionsPromptArgs = {
   context: ConversationTurn[]
   level: string
-  scene: string
 }
 
 /**
@@ -13,7 +12,7 @@ export type ReplySuggestionsPromptArgs = {
  * user-message body. The LLM must reply with strict JSON — an array of exactly
  * 3 objects — so the browser can incrementally parse tokens as they stream.
  */
-export function ReplySuggestionsPrompt({ context, level, scene }: ReplySuggestionsPromptArgs) {
+export function ReplySuggestionsPrompt({ context, level }: ReplySuggestionsPromptArgs) {
   const contextLines =
     context.length === 0
       ? ['(no prior turns — this is the opening of the conversation)']
@@ -30,8 +29,7 @@ export function ReplySuggestionsPrompt({ context, level, scene }: ReplySuggestio
         suggest exactly 3 things the learner could say next.
       </p>
       <p>Learner level: {level}.</p>
-      <p>Scene: {scene}.</p>
-      <p>Tailor vocabulary and grammar difficulty to the level and scene above.</p>
+      <p>Tailor vocabulary and grammar difficulty to the level above.</p>
 
       <h2>Conversation so far</h2>
       <pre>{contextLines.join('\n')}</pre>

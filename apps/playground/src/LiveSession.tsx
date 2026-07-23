@@ -17,7 +17,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Input,
   Label,
 } from '@kibotalk/ui'
 import { AudioSource } from './audio/audio-source'
@@ -46,7 +45,6 @@ const STATE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'o
 
 export default function LiveSession() {
   const [level, setLevel] = useState('N5')
-  const [scene, setScene] = useState('便利店')
   const [speaker, setSpeaker] = useState<'user' | 'other'>('other')
   const [running, setRunning] = useState(false)
   const [loading, setLoading] = useState('')
@@ -140,7 +138,7 @@ export default function LiveSession() {
       const stt = new ProxySttClient(audio.sampleRate)
       stt.configurePadding(prePadMs, postPadMs)
       sttRef.current = stt
-      const llm = new ProxyLlmClient(level, scene)
+      const llm = new ProxyLlmClient(level)
       llmRef.current = llm
       const storage = storageRef.current
       const pipeline = new Pipeline({ stt, llm, conversation: storage })
@@ -248,11 +246,7 @@ export default function LiveSession() {
 
   function onLevelChange(value: string) {
     setLevel(value)
-    llmRef.current?.configure(value, scene)
-  }
-  function onSceneChange(value: string) {
-    setScene(value)
-    llmRef.current?.configure(level, value)
+    llmRef.current?.configure(value)
   }
 
   async function clearSession() {
@@ -287,15 +281,6 @@ export default function LiveSession() {
                   <option key={l} value={l}>{l}</option>
                 ))}
               </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="live-scene">场景</Label>
-              <Input
-                id="live-scene"
-                value={scene}
-                onChange={(e) => onSceneChange(e.target.value)}
-                className="w-36"
-              />
             </div>
             <div className="flex items-center gap-2">
               <Label htmlFor="live-speaker">当前说话人</Label>

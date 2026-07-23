@@ -38,7 +38,7 @@ app.post('/stt', async (c) => {
   }
 })
 
-// POST /llm — SSE. Body: { context, level, scene }. Emit the rendered prompt
+// POST /llm — SSE. Body: { context, level }. Emit the rendered prompt
 // first (`prompt` event), then stream raw LLM tokens as `token` events. On
 // client disconnect, c.req.raw.signal aborts, which we forward to the upstream
 // provider fetch so it stops generating. Half-streamed candidates are dropped
@@ -49,12 +49,10 @@ app.post('/llm', (c) =>
     const body = (await c.req.json().catch(() => null)) as {
       context?: ConversationTurn[]
       level?: string
-      scene?: string
     } | null
     const prompt = await renderReplySuggestionsPrompt({
       context: body?.context ?? [],
       level: body?.level ?? 'N5',
-      scene: body?.scene ?? '通用',
     })
     await stream.writeSSE({ event: 'prompt', data: prompt })
     let llmClient

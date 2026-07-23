@@ -19,7 +19,6 @@ describe('renderReplySuggestionsPrompt', async () => {
       turn('user', 'これをください'),
     ],
     level: 'N5',
-    scene: '便利店',
   }
 
   const output = await renderReplySuggestionsPrompt(args)
@@ -37,9 +36,9 @@ describe('renderReplySuggestionsPrompt', async () => {
     expect(output).toContain('これをください')
   })
 
-  it('includes the level and the scene', () => {
+  it('includes the level and not a scene field', () => {
     expect(output).toContain('N5')
-    expect(output).toContain('便利店')
+    expect(output).not.toMatch(/Scene:/i)
   })
 
   it('instructs a strict JSON array of exactly 3', () => {
@@ -49,9 +48,8 @@ describe('renderReplySuggestionsPrompt', async () => {
   })
 
   it('handles an empty context gracefully', async () => {
-    const out = await renderReplySuggestionsPrompt({ context: [], level: 'N4', scene: '通用' })
+    const out = await renderReplySuggestionsPrompt({ context: [], level: 'N4' })
     expect(out).toContain('no prior turns')
     expect(out).toContain('N4')
-    expect(out).toContain('通用')
   })
 })

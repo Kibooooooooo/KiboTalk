@@ -8,7 +8,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Input,
   Label,
   Separator,
   Textarea,
@@ -205,7 +204,6 @@ function SttPanel() {
 
 function LlmPanel() {
   const [level, setLevel] = useState('N5')
-  const [scene, setScene] = useState('便利店')
   const [contextText, setContextText] = useState('other: 你好，欢迎光临！\nuser: （我想说）我只是随便看看')
   const [candidates, setCandidates] = useState<CandidateState>([])
   const [raw, setRaw] = useState('')
@@ -262,7 +260,7 @@ function LlmPanel() {
       const res = await fetch('/llm', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ context: parseContext(contextText), level, scene }),
+        body: JSON.stringify({ context: parseContext(contextText), level }),
         signal: controller.signal,
       })
       if (!res.ok || !res.body) {
@@ -371,10 +369,6 @@ function LlmPanel() {
                 <option key={l} value={l}>{l}</option>
               ))}
             </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Label htmlFor="llm-scene">场景</Label>
-            <Input id="llm-scene" value={scene} onChange={(e) => setScene(e.target.value)} className="w-36" />
           </div>
         </div>
 

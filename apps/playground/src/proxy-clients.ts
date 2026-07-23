@@ -44,14 +44,10 @@ export class ProxySttClient implements SttClient {
  * appear one-by-one as their objects complete in the stream.
  */
 export class ProxyLlmClient implements LlmClient {
-  constructor(
-    private level = 'N5',
-    private scene = '通用',
-  ) {}
+  constructor(private level = 'N5') {}
 
-  configure(level: string, scene: string): void {
+  configure(level: string): void {
     this.level = level
-    this.scene = scene
   }
 
   async *streamCandidates(
@@ -61,7 +57,7 @@ export class ProxyLlmClient implements LlmClient {
     const res = await fetch('/llm', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ context, level: this.level, scene: this.scene }),
+      body: JSON.stringify({ context, level: this.level }),
       signal,
     })
     if (!res.ok) {
