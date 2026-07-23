@@ -38,11 +38,11 @@ app.post('/stt', async (c) => {
   }
 })
 
-// POST /llm — SSE. Body: { context, level, scene }. Render the reply-suggestions
-// prompt, stream raw LLM tokens to the browser as `token` SSE events. On client
-// disconnect, c.req.raw.signal aborts, which we forward to the upstream provider
-// fetch so it stops generating. Half-streamed candidates are dropped by the
-// client (per spec §1.4 "以 STT 为准").
+// POST /llm — SSE. Body: { context, level, scene }. Emit the rendered prompt
+// first (`prompt` event), then stream raw LLM tokens as `token` events. On
+// client disconnect, c.req.raw.signal aborts, which we forward to the upstream
+// provider fetch so it stops generating. Half-streamed candidates are dropped
+// by the client (per spec §1.4 "以 STT 为准").
 app.post('/llm', (c) =>
   streamSSE(c, async (stream) => {
     const signal = c.req.raw.signal
@@ -56,6 +56,7 @@ app.post('/llm', (c) =>
       level: body?.level ?? 'N5',
       scene: body?.scene ?? '通用',
     })
+    await stream.writeSSE({ event: 'prompt', data: prompt })
     let llmClient
     try {
       llmClient = createLlmClient(llmConfigFromEnv(process.env))

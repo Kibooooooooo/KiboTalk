@@ -58,6 +58,7 @@ function createXsaiClient({ baseUrl, apiKey, model }: LlmClientOptions): LlmClie
 
 const adapters: Record<string, LlmAdapterFactory> = {
   openrouter: createXsaiClient,
+  openai: createXsaiClient, // LM Studio / any OpenAI-compatible /v1
 }
 
 /**

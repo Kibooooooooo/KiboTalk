@@ -24,10 +24,12 @@ describe('renderReplySuggestionsPrompt', async () => {
 
   const output = await renderReplySuggestionsPrompt(args)
 
-  it('mentions all 3 candidate field names', () => {
+  it('mentions candidate field names including segments', () => {
     expect(output).toContain('meaningZh')
     expect(output).toContain('targetText')
     expect(output).toContain('reading')
+    expect(output).toContain('segments')
+    expect(output).toContain('particle')
   })
 
   it('includes the conversation context (prior turn texts)', () => {

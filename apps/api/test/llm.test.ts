@@ -44,32 +44,48 @@ function sseBody(tokens: string[]): string {
   )
 }
 
-/** Parse an SSE response stream into {event, data} pairs. */
+/** Parse an SSE response stream into {event, data} pairs (multi-line data joined). */
 async function readSse(res: Response): Promise<Array<{ event: string; data: string }>> {
   const messages: Array<{ event: string; data: string }> = []
   const reader = res.body!.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   let event = 'message'
+  let dataLines: string[] = []
+
+  function flush() {
+    if (dataLines.length === 0) {
+      event = 'message'
+      return
+    }
+    messages.push({ event, data: dataLines.join('\n') })
+    event = 'message'
+    dataLines = []
+  }
+
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     let idx: number
     while ((idx = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, idx).trim()
+      let line = buffer.slice(0, idx)
       buffer = buffer.slice(idx + 1)
-      if (!line) {
+      if (line.endsWith('\r')) line = line.slice(0, -1)
+      if (line === '') {
+        flush()
         continue
       }
+      if (line.startsWith(':')) continue
       if (line.startsWith('event:')) {
-        event = line.slice(6).trim()
+        event = line.slice(6).trimStart()
       } else if (line.startsWith('data:')) {
-        messages.push({ event, data: line.slice(5).trim() })
-        event = 'message'
+        const payload = line.slice(5)
+        dataLines.push(payload.startsWith(' ') ? payload.slice(1) : payload)
       }
     }
   }
+  flush()
   return messages
 }
 
@@ -118,6 +134,9 @@ describe('T3 — real /llm SSE through proxy', () => {
 
     expect(res.ok).toBe(true)
     const messages = await readSse(res)
+    const promptEvent = messages.find((m) => m.event === 'prompt')
+    expect(promptEvent?.data).toContain('便利店')
+    expect(promptEvent?.data).toContain('N5')
     const tokenEvents = messages.filter((m) => m.event === 'token')
     expect(tokenEvents.map((m) => m.data)).toEqual(['[', '{"meaningZh":"hi"}', ']'])
 

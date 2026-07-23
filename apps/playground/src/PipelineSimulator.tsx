@@ -4,6 +4,7 @@ import type { ConversationTurn, ReplyCandidate } from '@kibotalk/conversation'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from '@kibotalk/ui'
 import { createSession } from './session'
 import type { SessionHandle } from './session'
+import { ReplyCandidateCard } from './components/ReplyCandidateCard'
 
 type TurnView = ConversationTurn & { candidates?: ReplyCandidate[]; failed?: boolean }
 
@@ -158,11 +159,9 @@ export default function PipelineSimulator() {
                     </div>
                     <div className="text-sm">{t.sttFailed ? '（空·转写失败）' : t.text}</div>
                     {t.candidates && t.candidates.length > 0 && (
-                      <ul className="mt-1 ml-4 text-xs text-muted-foreground list-disc">
+                      <ul className="mt-1 ml-4 list-disc space-y-1">
                         {t.candidates.map((c) => (
-                          <li key={c.id}>
-                            {c.meaningZh} → <b className="text-foreground">{c.targetText}</b> [{c.reading}]
-                          </li>
+                          <ReplyCandidateCard key={c.id} candidate={c} compact />
                         ))}
                       </ul>
                     )}
@@ -181,11 +180,7 @@ export default function PipelineSimulator() {
             {latestCandidates && latestCandidates.length > 0 ? (
               <ul className="space-y-2">
                 {latestCandidates.map((c) => (
-                  <li key={c.id} className="rounded-md border p-3">
-                    <div className="font-semibold">{c.targetText}</div>
-                    <div className="text-sm">{c.meaningZh}</div>
-                    <div className="text-xs text-muted-foreground">{c.reading}</div>
-                  </li>
+                  <ReplyCandidateCard key={c.id} candidate={c} />
                 ))}
               </ul>
             ) : failedTurnId ? (

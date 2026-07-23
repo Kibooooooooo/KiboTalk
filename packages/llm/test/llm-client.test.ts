@@ -119,6 +119,21 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
       }),
     ).toThrowError(/unknown provider: not-a-real-provider/)
   })
+
+  it('accepts the openai provider (LM Studio / local OpenAI-compatible)', async () => {
+    const client = createLlmClient({
+      provider: 'openai',
+      baseUrl: 'http://127.0.0.1:1234/v1',
+      apiKey: 'lm-studio',
+      model: 'google/gemma-4-e4b',
+    })
+    const tokens: string[] = []
+    for await (const t of client.streamChat({ messages: [{ role: 'user', content: 'hi' }] })) {
+      tokens.push(t)
+    }
+    expect(fetchCalls[0].url).toBe('http://127.0.0.1:1234/v1/chat/completions')
+    expect(tokens).toEqual(['Hello', ' world', '!'])
+  })
 })
 
 describe('llmConfigFromEnv', () => {

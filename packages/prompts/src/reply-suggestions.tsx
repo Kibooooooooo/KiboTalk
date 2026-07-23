@@ -1,3 +1,4 @@
+import React from 'react'
 import type { ConversationTurn } from '@kibotalk/conversation'
 
 export type ReplySuggestionsPromptArgs = {
@@ -10,8 +11,7 @@ export type ReplySuggestionsPromptArgs = {
  * Velin TSX prompt for "give me 3 reply candidates for the learner's next
  * turn". Rendered via `@velin-dev/core-react` to a single string used as the
  * user-message body. The LLM must reply with strict JSON — an array of exactly
- * 3 objects with keys `meaningZh`, `targetText`, `reading` — so the browser can
- * incrementally parse tokens as they stream.
+ * 3 objects — so the browser can incrementally parse tokens as they stream.
  */
 export function ReplySuggestionsPrompt({ context, level, scene }: ReplySuggestionsPromptArgs) {
   const contextLines =
@@ -41,12 +41,20 @@ export function ReplySuggestionsPrompt({ context, level, scene }: ReplySuggestio
       <ul>
         <li>meaningZh: the learner's intent in 中文 (Chinese), one short phrase.</li>
         <li>targetText: the Japanese reply the learner should say.</li>
-        <li>reading: furigana/kana or romaji reading of targetText.</li>
+        <li>reading: full-phrase furigana/kana reading of targetText (fallback).</li>
+        <li>
+          segments: array of word/morpheme spans covering targetText left-to-right.
+          Concatenating every segment.surface MUST equal targetText.
+          Each segment: {'{'} "surface", optional "reading" (furigana only when surface
+          has kanji), "role" one of "content" | "particle" | "punct" {'}'}.
+          Use role "particle" for 助詞 (は/が/を/に/で/と/も/へ/から/まで/より/の/や/か/ね/よ…).
+          Use "punct" for 。！？、… and similar. Everything else is "content".
+        </li>
       </ul>
       <p>Respond with STRICT JSON ONLY — no prose, no code fences, no trailing text.</p>
       <p>
         The response MUST be a JSON array of EXACTLY 3 objects, each with the keys
-        "meaningZh", "targetText", and "reading", in that order. Do not include any
+        "meaningZh", "targetText", "reading", and "segments", in that order. Do not include any
         other keys or wrapper object. Output the array and stop.
       </p>
     </article>

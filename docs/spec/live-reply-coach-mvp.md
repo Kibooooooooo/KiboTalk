@@ -90,11 +90,20 @@ type ConversationTurn = {
   suggestions?: ReplyCandidate[] // 仅 other 轮次
 }
 
+type ReplySegmentRole = 'content' | 'particle' | 'punct'
+
+type ReplySegment = {
+  surface: string
+  reading?: string // 汉字注音；假名/标点可省略
+  role: ReplySegmentRole
+}
+
 type ReplyCandidate = {
   id: string
   meaningZh: string
   targetText: string
-  reading: string
+  reading: string // 整句读音（回退）
+  segments?: ReplySegment[] // 分词；surface 拼接 = targetText；用于 ruby + 助词高亮
 }
 ```
 

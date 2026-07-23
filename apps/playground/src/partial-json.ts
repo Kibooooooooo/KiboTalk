@@ -1,4 +1,4 @@
-import type { ReplyCandidate } from '@kibotalk/conversation'
+import type { ReplyCandidate, ReplySegment, ReplySegmentRole } from '@kibotalk/conversation'
 
 /**
  * Extract complete top-level JSON objects from a (possibly incomplete) JSON
@@ -54,14 +54,41 @@ export function extractCompleteObjects(buffer: string): unknown[] {
   return parsed
 }
 
+const SEGMENT_ROLES: ReadonlySet<string> = new Set(['content', 'particle', 'punct'])
+
+function parseSegments(value: unknown): ReplySegment[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const segments: ReplySegment[] = []
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue
+    const o = item as Record<string, unknown>
+    if (typeof o.surface !== 'string' || o.surface.length === 0) continue
+    if (typeof o.role !== 'string' || !SEGMENT_ROLES.has(o.role)) continue
+    const segment: ReplySegment = {
+      surface: o.surface,
+      role: o.role as ReplySegmentRole,
+    }
+    if (typeof o.reading === 'string' && o.reading.length > 0) {
+      segment.reading = o.reading
+    }
+    segments.push(segment)
+  }
+  return segments.length > 0 ? segments : undefined
+}
+
 /** Coerce extracted objects into ReplyCandidate shape, filling missing ids. */
 export function extractCandidates(buffer: string): ReplyCandidate[] {
   return extractCompleteObjects(buffer)
     .filter((o): o is Record<string, unknown> => typeof o === 'object' && o !== null)
-    .map((o, i) => ({
-      id: typeof o.id === 'string' ? o.id : `c${i}`,
-      meaningZh: typeof o.meaningZh === 'string' ? o.meaningZh : '',
-      targetText: typeof o.targetText === 'string' ? o.targetText : '',
-      reading: typeof o.reading === 'string' ? o.reading : '',
-    }))
+    .map((o, i) => {
+      const candidate: ReplyCandidate = {
+        id: typeof o.id === 'string' ? o.id : `c${i}`,
+        meaningZh: typeof o.meaningZh === 'string' ? o.meaningZh : '',
+        targetText: typeof o.targetText === 'string' ? o.targetText : '',
+        reading: typeof o.reading === 'string' ? o.reading : '',
+      }
+      const segments = parseSegments(o.segments)
+      if (segments) candidate.segments = segments
+      return candidate
+    })
 }
