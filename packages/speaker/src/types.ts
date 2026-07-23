@@ -11,9 +11,18 @@ export type Embedding = {
   passphrase?: string
 }
 
+/**
+ * Result of comparing a chunk to the enrolled embedding.
+ *
+ * - `similarity`: raw cosine similarity vs the enrolled vector (use this for
+ *   threshold tuning in the playground).
+ * - `confidence`: confidence in the chosen `speaker` label — equal to
+ *   `similarity` when labeled `user`, and `1 - similarity` when labeled `other`.
+ */
 export type VerifyResult = {
   speaker: Speaker
   confidence: number
+  similarity: number
 }
 
 /**

@@ -73,10 +73,10 @@ export class EmbeddingSpeakerVerifier implements SpeakerVerifier {
 
   async verify(audioChunk: ArrayBuffer, embedding: Embedding): Promise<VerifyResult> {
     const chunkEmb = await this.embedAudio(new Float32Array(audioChunk))
-    const sim = cosineSimilarity(chunkEmb, embedding.vector)
-    const speaker: Speaker = sim >= this.threshold ? 'user' : 'other'
-    const confidence = sim >= this.threshold ? sim : 1 - sim
-    return { speaker, confidence }
+    const similarity = cosineSimilarity(chunkEmb, embedding.vector)
+    const speaker: Speaker = similarity >= this.threshold ? 'user' : 'other'
+    const confidence = similarity >= this.threshold ? similarity : 1 - similarity
+    return { speaker, confidence, similarity }
   }
 
   /** Update the cosine-similarity threshold at runtime (playground tuning). */

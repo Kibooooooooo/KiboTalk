@@ -36,7 +36,8 @@ describe('EmbeddingSpeakerVerifier', () => {
     const emb = await verifier.enroll(stream([pcm(0.5)]), 'p')
     const result = await verifier.verify(pcm(0.5), emb)
     expect(result.speaker).toBe('user')
-    expect(result.confidence).toBeGreaterThan(0.8)
+    expect(result.similarity).toBeGreaterThan(0.8)
+    expect(result.confidence).toBe(result.similarity)
   })
 
   it('verify labels a different-sounding chunk as other', async () => {
@@ -46,6 +47,7 @@ describe('EmbeddingSpeakerVerifier', () => {
     // cosine([0.5,1],[-0.5,1]) = 0.6 → below 0.8 → other, confidence 1-0.6=0.4
     const result = await verifier.verify(pcm(-0.5), emb)
     expect(result.speaker).toBe('other')
+    expect(result.similarity).toBeCloseTo(0.6, 1)
     expect(result.confidence).toBeCloseTo(0.4, 1)
   })
 

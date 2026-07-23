@@ -34,6 +34,7 @@ export class StubSpeakerVerifier implements SpeakerVerifier {
   }
 
   async verify(_audioChunk: ArrayBuffer, _embedding: Embedding): Promise<VerifyResult> {
-    return { speaker: this.injectedLabel, confidence: 1 }
+    const similarity = this.injectedLabel === 'user' ? 1 : 0
+    return { speaker: this.injectedLabel, confidence: 1, similarity }
   }
 }
