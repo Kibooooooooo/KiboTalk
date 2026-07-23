@@ -60,6 +60,7 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
       baseUrl: 'https://example.test/api',
       apiKey: 'secret-key',
       model: 'gpt-4o-mini',
+      thinking: 'disabled',
     })
     const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       { role: 'system', content: 'You are a coach.' },
@@ -88,6 +89,7 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
       baseUrl: 'https://example.test',
       apiKey: 'k',
       model: 'm',
+      thinking: 'disabled',
     })
     const tokens: string[] = []
     for await (const t of client.streamChat({ messages: [] })) tokens.push(t)
@@ -100,6 +102,7 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
       baseUrl: 'https://example.test',
       apiKey: 'k',
       model: 'm',
+      thinking: 'disabled',
     })
     const controller = new AbortController()
     // Drain the stream so fetch is actually invoked.
@@ -116,6 +119,7 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
         baseUrl: 'https://example.test',
         apiKey: 'k',
         model: 'm',
+        thinking: 'disabled',
       }),
     ).toThrowError(/unknown provider: not-a-real-provider/)
   })
@@ -126,6 +130,7 @@ describe('createLlmClient — OpenRouter streaming adapter', () => {
       baseUrl: 'http://127.0.0.1:1234/v1',
       apiKey: 'lm-studio',
       model: 'google/gemma-4-e4b',
+      thinking: 'disabled',
     })
     const tokens: string[] = []
     for await (const t of client.streamChat({ messages: [{ role: 'user', content: 'hi' }] })) {
@@ -151,7 +156,19 @@ describe('llmConfigFromEnv', () => {
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'key-123',
       model: 'anthropic/claude-3.5',
+      thinking: 'disabled',
     })
+  })
+
+  it('enables thinking only when LLM_THINKING=enabled', () => {
+    const cfg = llmConfigFromEnv({
+      LLM_ACTIVE: 'openrouter',
+      LLM_OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
+      LLM_OPENROUTER_API_KEY: 'key-123',
+      LLM_OPENROUTER_MODEL: 'deepseek-v4-flash',
+      LLM_THINKING: 'enabled',
+    })
+    expect(cfg.thinking).toBe('enabled')
   })
 
   it('throws a clear error when LLM_ACTIVE is missing', () => {

@@ -13,11 +13,15 @@ export type ChatMessage = {
   content: string
 }
 
+export type LlmThinkingMode = 'enabled' | 'disabled'
+
 export type LlmClientOptions = {
   provider: string
   baseUrl: string
   apiKey: string
   model: string
+  /** DeepSeek V4 defaults to thinking on; live coach wants this off for TTFT. */
+  thinking: LlmThinkingMode
 }
 
 export interface LlmClient {
@@ -32,7 +36,7 @@ export type LlmAdapterFactory = (opts: LlmClientOptions) => LlmClient
  * `data:` parse, `[DONE]` termination, and forwarding `abortSignal` to fetch.
  * Empty deltas are skipped so downstream consumers only see real tokens.
  */
-function createXsaiClient({ baseUrl, apiKey, model }: LlmClientOptions): LlmClient {
+function createXsaiClient({ baseUrl, apiKey, model, thinking }: LlmClientOptions): LlmClient {
   return {
     async *streamChat({ messages, signal }) {
       const { textStream } = streamText({
@@ -41,6 +45,8 @@ function createXsaiClient({ baseUrl, apiKey, model }: LlmClientOptions): LlmClie
         model,
         messages,
         abortSignal: signal,
+        // DeepSeek OpenAI-compatible extension; ignored by providers that don't use it.
+        thinking: { type: thinking },
       })
       const reader = textStream.getReader()
       try {
@@ -79,6 +85,9 @@ export function createLlmClient(opts: LlmClientOptions): LlmClient {
  * Read `LLM_ACTIVE` + the active `LLM_<PROVIDER>_*` group from an env map and
  * return the factory args. Pure: takes env as an argument, does not touch
  * `process.env`, so it is testable without node.
+ *
+ * `LLM_THINKING=enabled` turns on provider thinking/CoT (DeepSeek V4 default).
+ * Anything else (including unset) → disabled, for live-coach TTFT.
  */
 export function llmConfigFromEnv(env: Record<string, string | undefined>): LlmClientOptions {
   const active = env.LLM_ACTIVE
@@ -96,5 +105,6 @@ export function llmConfigFromEnv(env: Record<string, string | undefined>): LlmCl
       `missing env vars for provider "${active}": ${missing.join(', ')}`,
     )
   }
-  return { provider: active, baseUrl: baseUrl!, apiKey: apiKey!, model: model! }
+  const thinking: LlmThinkingMode = env.LLM_THINKING === 'enabled' ? 'enabled' : 'disabled'
+  return { provider: active, baseUrl: baseUrl!, apiKey: apiKey!, model: model!, thinking }
 }
